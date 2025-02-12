@@ -132,7 +132,7 @@ def insert_course(course_code, section, seats_capacity, seats_available, instruc
                 cursor.execute("""
                     INSERT INTO course_instructors (course_id, instructor_id)
                     VALUES (?, ?)
-                """, (course_id, instsructor_id))
+                """, (course_id, instructor_id))
 
             conn.commit()
             conn.close()
