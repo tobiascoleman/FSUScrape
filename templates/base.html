@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FSU Scraper</title>
+    <style>
+        .flash-message {
+            display: none;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .danger {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+    </style>
+</head>
+<body>
+    <div id="flash-message" class="flash-message"></div>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <script>
+                document.addEventListener('DOMContentLoaded', function() {
+                    const flashMessage = document.getElementById('flash-message');
+                    {% for category, message in messages %}
+                        flashMessage.textContent = "{{ message }}";
+                        flashMessage.classList.add("{{ category }}");
+                        flashMessage.style.display = 'block';
+                        setTimeout(() => {
+                            flashMessage.style.display = 'none';
+                            flashMessage.classList.remove("{{ category }}");
+                        }, 3000);
+                    {% endfor %}
+                });
+            </script>
+        {% endif %}
+    {% endwith %}
+    
+    {% block content %}{% endblock %}
+</body>
+</html>

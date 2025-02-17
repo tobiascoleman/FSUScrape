@@ -1,5 +1,6 @@
 import sqlite3
 import requests
+import init_db
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
@@ -168,7 +169,7 @@ def process_courses(data):
         print("No data fetched.")
         
 if __name__ == "__main__":
-    create_database()
+    init_db.init_db()
     username = input("username: ")
     password = input("password: ")
     year = input("year: ")
@@ -177,6 +178,7 @@ if __name__ == "__main__":
     course = input("course: ")
     cookies = get_cookie(username, password, headless=False)  # Set to False for testing
     data = fetch_course_data(year, term, subject, course, cookies)
+    print(data)
     if not data:
         print("No data fetched...")
     process_courses(data)
