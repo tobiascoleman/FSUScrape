@@ -1,22 +1,44 @@
 {% extends "base.html" %}
 
 {% block content %}
-<h1>Add Course</h1>
-<form method="post">
-    <label for="year">Year:</label>
-    <input type="text" id="year" name="year" required>
-    <br>
-    <label for="term">Term:</label>
-    <input type="text" id="term" name="term" required>
-    <br>
-    <label for="subject">Subject:</label>
-    <input type="text" id="subject" name="subject" required>
-    <br>
-    <label for="course">Course:</label>
-    <input type="text" id="course" name="course" required>
-    <br>
-    <br>
-    <button type="submit">Add Course</button>
-</form>
-<a href="{{ url_for('dashboard') }}">Back to Dashboard</a>
+<div class="container mt-5">
+    <div id="loading-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 1000;">
+        <div class="d-flex justify-content-center align-items-center" style="height: 100%;">
+            <div class="text-center text-white">
+                <div class="spinner-border mb-3" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <h4>Waiting for 2FA Authorization...</h4>
+                <p>Please check your phone and approve the login request.</p>
+            </div>
+        </div>
+    </div>
+
+    <h2>Add Course</h2>
+    <form id="courseForm" method="POST">
+        <div class="mb-3">
+            <label for="year" class="form-label">Year</label>
+            <input type="text" class="form-control" id="year" name="year" required>
+        </div>
+        <div class="mb-3">
+            <label for="term" class="form-label">Term</label>
+            <input type="text" class="form-control" id="term" name="term" required>
+        </div>
+        <div class="mb-3">
+            <label for="subject" class="form-label">Subject</label>
+            <input type="text" class="form-control" id="subject" name="subject" required>
+        </div>
+        <div class="mb-3">
+            <label for="course" class="form-label">Course</label>
+            <input type="text" class="form-control" id="course" name="course" required>
+        </div>
+        <button type="submit" class="btn btn-primary">Add Course</button>
+    </form>
+</div>
+
+<script>
+document.getElementById('courseForm').addEventListener('submit', function(e) {
+    document.getElementById('loading-overlay').style.display = 'block';
+});
+</script>
 {% endblock %}

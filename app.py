@@ -84,7 +84,6 @@ def add_course():
         course = request.form['course']
         username = session['username']
 
-        # Get encrypted FSU password and decrypt it
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT fsu_password FROM users WHERE username = ?", (username,))
@@ -93,10 +92,13 @@ def add_course():
 
         if user:
             decrypted_password = cipher.decrypt(user['fsu_password'])
-            cookies = scraper.get_cookie(username, decrypted_password, headless=True)
-            data = scraper.fetch_course_data(year, term, subject, course, cookies)
-            scraper.process_courses(data)
-            flash('Course data processed successfully!', 'success')
+            try:
+                cookies = scraper.get_cookie(username, decrypted_password, headless=True)
+                data = scraper.fetch_course_data(year, term, subject, course, cookies)
+                scraper.process_courses(data)
+                flash('Course data processed successfully!', 'success')
+            except Exception as e:
+                flash(f'Error processing course: {str(e)}', 'danger')
             return redirect(url_for('dashboard'))
         else:
             flash('User not found!', 'danger')

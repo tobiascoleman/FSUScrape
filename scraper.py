@@ -1,3 +1,4 @@
+import queue
 import sqlite3
 import requests
 import init_db
@@ -8,29 +9,26 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.wait import WebDriverWait
 import time
 
-def get_cookie(username, password, headless=True):
+def get_cookie(username, password, headless=True, auth_queue=None):
     """Scrapes a website with optional headless mode."""
-    
     chrome_options = Options()
     if headless:
-        # Set up Chrome options for headless mode
-        chrome_options.add_argument("--headless=new")  # Run Chrome in headless mode
+        chrome_options.add_argument("--headless=new")
         chrome_options.add_argument("--disable-gpu")
 
-    # Initialize WebDriver (Adjust the path if needed)
     driver = webdriver.Chrome(options=chrome_options)
     driver.implicitly_wait(10)
+    
+    try:
+        login_function(driver, username, password, auth_queue)
+        driver.get("https://fsu.collegescheduler.com/entry")
+        WebDriverWait(driver, 20).until(lambda driver: driver.find_element(By.ID, "2024-fall-options"))
+        cookies = driver.get_cookies()
+        return cookies
+    finally:
+        driver.quit()
 
-    login_function(driver, username, password)
-
-    # Navigate to the target page
-    driver.get("https://fsu.collegescheduler.com/entry")
-    WebDriverWait(driver, 10).until(lambda driver: driver.find_element(By.ID, "2024-fall-options"))
-
-    cookies = driver.get_cookies()
-    return cookies
-
-def login_function(driver, username, password):
+def login_function(driver, username, password, auth_queue=None):
     driver.get("https://cas.fsu.edu/cas/login?service=https%3A%2F%2Fwww.my.fsu.edu%2Fc%2Fportal%2Flogin")
     userfield = driver.find_element(By.NAME, "username")
     passfield = driver.find_element(By.NAME, "password")
@@ -41,16 +39,20 @@ def login_function(driver, username, password):
     login_button.click()
     
     time.sleep(10)
-    # print("page source", driver.page_source)
     if "Secured by Duo" in driver.page_source.strip():
-            print("2FA detected! Please approve the login on your phone.")
-            
-            # Option 1: Wait for user confirmation manually
-            input("Press ENTER once you have approved the login...")
+        print("2FA detected! Please approve the login on your phone.")
+        max_wait = 60  # Maximum wait time in seconds
+        start_time = time.time()
+        
+        while "Secured by Duo" in driver.page_source.strip():
+            time.sleep(2)  # Check every 2 seconds
+            if time.time() - start_time > max_wait:
+                raise Exception("2FA timeout after 60 seconds")
+        
+        print("2FA approved!")
                 
-    WebDriverWait(driver, 10).until(lambda driver: driver.find_element(By.ID, "dont-trust-browser-button")).click()
-    WebDriverWait(driver, 10).until(lambda driver: driver.find_element(By.ID, "kgoui_Rcontent_I0_Rprimary_I0_Rcontent_I0_Rcontent"))
-    
+    WebDriverWait(driver, 20).until(lambda driver: driver.find_element(By.ID, "dont-trust-browser-button")).click()
+    WebDriverWait(driver, 20).until(lambda driver: driver.find_element(By.ID, "kgoui_Rcontent_I0_Rprimary_I0_Rcontent_I0_Rcontent"))
 
 def fetch_course_data(year, term, subject, course, cookies):
     """Fetch course data from the API."""
