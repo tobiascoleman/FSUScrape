@@ -11,7 +11,7 @@
 
 2. install Selenium
 ```shell
-brew install selenium
+brew install selenium-server
 ```
 When this gets installed you may run into security issues with mac, to bypass:
 `Settings -> Privacy & Security (scroll down) -> Selenium should be there, click open anyways`
