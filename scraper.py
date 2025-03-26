@@ -9,7 +9,7 @@ from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.wait import WebDriverWait
 import time
 
-def get_cookie(username, password, headless=True, auth_queue=None):
+def get_cookie(username, password, year, term, headless=True, auth_queue=None):
     """Scrapes a website with optional headless mode."""
     chrome_options = Options()
     if headless:
@@ -22,7 +22,11 @@ def get_cookie(username, password, headless=True, auth_queue=None):
     try:
         login_function(driver, username, password, auth_queue)
         driver.get("https://fsu.collegescheduler.com/entry")
-        WebDriverWait(driver, 20).until(lambda driver: driver.find_element(By.ID, "2024-fall-options"))
+        
+        # Dynamically construct the term ID
+        term_id = f"{year}-{term.lower()}-options"  # e.g., "2025-fall-options"
+        WebDriverWait(driver, 20).until(lambda driver: driver.find_element(By.ID, term_id))
+        
         cookies = driver.get_cookies()
         return cookies
     finally:
@@ -50,8 +54,16 @@ def login_function(driver, username, password, auth_queue=None):
                 raise Exception("2FA timeout after 60 seconds")
         
         print("2FA approved!")
-                
-    WebDriverWait(driver, 20).until(lambda driver: driver.find_element(By.ID, "dont-trust-browser-button")).click()
+    
+    try:
+        student_button = WebDriverWait(driver, 10).until(
+            lambda driver: driver.find_element(By.ID, "kgoui_Rcontent_I0_Rsecondary2_I1_Rcontent_I0_Rcontent_I1")
+        )
+        print("Student button found, clicking it...")
+        student_button.click()   
+    except Exception:
+        print("Student button not found. Proceeding without clicking it.")         
+    #WebDriverWait(driver, 20).until(lambda driver: driver.find_element(By.ID, "dont-trust-browser-button")).click()
     WebDriverWait(driver, 20).until(lambda driver: driver.find_element(By.ID, "kgoui_Rcontent_I0_Rprimary_I0_Rcontent_I0_Rcontent"))
 
 def fetch_course_data(year, term, subject, course, cookies):
@@ -81,6 +93,9 @@ def create_database():
                 section TEXT,
                 seatsCapacity INTEGER,
                 seatsAvailable INTEGER
+                weekdays TEXT,
+                time TEXT
+                
             )
         """)
 
@@ -178,7 +193,7 @@ if __name__ == "__main__":
     term = input("term: ")
     subject = input("subject: ")
     course = input("course: ")
-    cookies = get_cookie(username, password, headless=False)  # Set to False for testing
+    cookies = get_cookie(username, password, year, term, headless=False)  # Set to False for testing
     data = fetch_course_data(year, term, subject, course, cookies)
     print(data)
     if not data:

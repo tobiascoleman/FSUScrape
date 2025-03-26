@@ -93,7 +93,7 @@ def add_course():
         if user:
             decrypted_password = cipher.decrypt(user['fsu_password'])
             try:
-                cookies = scraper.get_cookie(username, decrypted_password, headless=True)
+                cookies = scraper.get_cookie(username, decrypted_password, year, term, headless=True)
                 data = scraper.fetch_course_data(year, term, subject, course, cookies)
                 scraper.process_courses(data)
                 flash('Course data processed successfully!', 'success')
