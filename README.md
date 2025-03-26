@@ -9,7 +9,7 @@
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 ```
 
-2. install Selenium
+2. install Selenium 
 ```shell
 brew install selenium-server
 ```
@@ -21,6 +21,10 @@ When this gets installed you may run into security issues with mac, to bypass:
 pip install pycryptodome
 pip install flask
 pip install werkzeug
+
+also? (toby check this -conner):
+pip install requests
+pip install selenium
 ```
 
 Should run but lmk if it doesn't
