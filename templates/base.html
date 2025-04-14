@@ -14,9 +14,33 @@
         .navbar {
             margin-bottom: 20px;
         }
+        #auth-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.7);
+            z-index: 1000;
+        }
     </style>
 </head>
 <body>
+    <!-- 2FA Authentication Overlay - Available on all pages -->
+    <div id="auth-overlay">
+        <div class="d-flex justify-content-center align-items-center" style="height: 100%;">
+            <div class="text-center text-white">
+                <div class="spinner-border mb-3" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <h4>Waiting for 2FA Authorization...</h4>
+                <p>Please check your phone and approve the login request.</p>
+                <p>Time remaining: <span id="auth-countdown">60</span> seconds</p>
+            </div>
+        </div>
+    </div>
+
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
         <div class="container">
             <a class="navbar-brand" href="{{ url_for('index') }}">FSU Course Scraper</a>
@@ -34,6 +58,12 @@
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('view_courses') }}">View Courses</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('schedule_generator') }}">Schedule Generator</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('saved_schedules') }}">View Schedules</a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('logout') }}">Logout</a>
@@ -66,7 +96,110 @@
         {% block content %}{% endblock %}
     </div>
 
+    <!-- Socket.IO library -->
+    <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
+    <!-- Time utilities -->
+    <script src="{{ url_for('static', filename='js/timeUtils.js') }}"></script>
+    <script>
+    // Initialize Socket.IO with more reliable configuration
+    const socket = io({
+        transports: ['websocket', 'polling'],
+        reconnection: true,
+        reconnectionAttempts: 5
+    });
+
+    // Debug logging for socket connection
+    socket.on('connect', function() {
+        console.log('Socket connected');
+    });
+
+    socket.on('connect_error', function(error) {
+        console.error('Socket connection error:', error);
+    });
+
+    socket.on('disconnect', function() {
+        console.log('Socket disconnected');
+    });
+    </script>
+    
     <!-- Bootstrap Bundle with Popper -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- Authentication handling script -->
+    <script>
+        let authCountdownTimer = null;
+        
+        // Function to show the authentication overlay
+        function showAuthOverlay() {
+            document.getElementById('auth-overlay').style.display = 'block';
+            startAuthCountdown();
+        }
+        
+        // Function to hide the authentication overlay
+        function hideAuthOverlay() {
+            document.getElementById('auth-overlay').style.display = 'none';
+            if (authCountdownTimer) {
+                clearInterval(authCountdownTimer);
+                authCountdownTimer = null;
+            }
+        }
+        
+        // Start the authentication countdown
+        function startAuthCountdown() {
+            let timeLeft = 60;
+            const countdownElement = document.getElementById('auth-countdown');
+            
+            // Clear any existing timer
+            if (authCountdownTimer) {
+                clearInterval(authCountdownTimer);
+            }
+            
+            // Set initial value
+            countdownElement.textContent = timeLeft;
+            
+            // Start new timer
+            authCountdownTimer = setInterval(function() {
+                timeLeft--;
+                countdownElement.textContent = timeLeft;
+                
+                if (timeLeft <= 0) {
+                    hideAuthOverlay();
+                    alert('2FA authentication timed out. Please try again.');
+                    window.location.reload();
+                }
+            }, 1000);
+        }
+        
+        // Listen for 2FA message from the iframe or server
+        window.addEventListener('message', function(event) {
+            if (event.data === '2fa_approved') {
+                hideAuthOverlay();
+            } else if (event.data === '2fa_required') {
+                showAuthOverlay();
+            }
+        });
+        
+        // Socket.IO listeners for notifications
+        socket.on('notification', function(data) {
+            if (data.type === '2fa_required') {
+                showAuthOverlay();
+            } else if (data.type === '2fa_approved') {
+                hideAuthOverlay();
+                // Display a success message if provided
+                if (data.message) {
+                    const alertDiv = document.createElement('div');
+                    alertDiv.className = 'alert alert-success alert-dismissible fade show';
+                    alertDiv.innerHTML = `
+                        ${data.message}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    `;
+                    document.querySelector('.container').prepend(alertDiv);
+                }
+            }
+        });
+    </script>
+    
+    <!-- Custom authentication handling -->
+    <script src="{{ url_for('static', filename='js/auth.js') }}"></script>
 </body>
 </html>

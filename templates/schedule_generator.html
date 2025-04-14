@@ -1,0 +1,736 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <h1>Schedule Generator</h1>
+
+    <div class="row">
+        <!-- Constraints Panel -->
+        <div class="col-lg-4 mb-4">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="card-title mb-0">Schedule Constraints</h5>
+                </div>
+                <div class="card-body">
+                    <form id="scheduleConstraintsForm" method="POST" action="{{ url_for('generate_schedule') }}">
+                        <!-- Time Preferences -->
+                        <h6 class="fw-bold mb-3">Time Preferences</h6>
+                        <div class="mb-3">
+                            <label class="form-label">Earliest Start Time</label>
+                            <select class="form-select" name="earliest_time">
+                                <option value="0800">8:00 AM</option>
+                                <option value="0900">9:00 AM</option>
+                                <option value="1000" selected>10:00 AM</option>
+                                <option value="1100">11:00 AM</option>
+                                <option value="1200">12:00 PM</option>
+                            </select>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Latest End Time</label>
+                            <select class="form-select" name="latest_time">
+                                <option value="1500">3:00 PM</option>
+                                <option value="1600">4:00 PM</option>
+                                <option value="1700" selected>5:00 PM</option>
+                                <option value="1800">6:00 PM</option>
+                                <option value="1900">7:00 PM</option>
+                                <option value="2000">8:00 PM</option>
+                                <option value="2100">9:00 PM</option>
+                            </select>
+                        </div>
+                        
+                        <!-- Day Preferences -->
+                        <h6 class="fw-bold mb-3">Day Preferences</h6>
+                        <div class="mb-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" value="M" name="preferred_days" id="monday" checked>
+                                <label class="form-check-label" for="monday">Monday</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" value="T" name="preferred_days" id="tuesday" checked>
+                                <label class="form-check-label" for="tuesday">Tuesday</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" value="W" name="preferred_days" id="wednesday" checked>
+                                <label class="form-check-label" for="wednesday">Wednesday</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" value="R" name="preferred_days" id="thursday" checked>
+                                <label class="form-check-label" for="thursday">Thursday</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" value="F" name="preferred_days" id="friday" checked>
+                                <label class="form-check-label" for="friday">Friday</label>
+                            </div>
+                        </div>
+                        
+                        <!-- Course Selection -->
+                        <h6 class="fw-bold mb-3">Course Selection</h6>
+                        <div class="mb-3">
+                            <label class="form-label">Required Courses</label>
+                            <select class="form-select" name="required_courses" multiple size="4">
+                                {% for course_code in available_courses %}
+                                <option value="{{ course_code }}">{{ course_code }}</option>
+                                {% endfor %}
+                            </select>
+                            <div class="form-text">Courses that must be included <br>(Ctrl+Click or Command+Click) for multiple)</div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Optional Courses</label>
+                            <select class="form-select" name="optional_courses" multiple size="4">
+                                {% for course_code in available_courses %}
+                                <option value="{{ course_code }}">{{ course_code }}</option>
+                                {% endfor %}
+                            </select>
+                            <div class="form-text">Courses that are optional but preferred</div>
+                        </div>
+                        
+                        <!-- Schedule Constraints -->
+                        <h6 class="fw-bold mb-3">Additional Constraints</h6>
+                        <div class="mb-3">
+                            <label class="form-label">Max Number of Courses</label>
+                            <select class="form-select" name="max_courses">
+                                <option value="3">3 courses</option>
+                                <option value="4" selected>4 courses</option>
+                                <option value="5">5 courses</option>
+                                <option value="6">6 courses</option>
+                            </select>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Term</label>
+                            <select class="form-select" name="term">
+                                <option value="2025 Spring">Spring 2025</option>
+                                <option value="2025 Summer">Summer 2025</option>
+                                <option value="2025 Fall" selected>Fall 2025</option>
+                            </select>
+                        </div>
+                        
+                        <div class="mb-3 form-check">
+                            <input type="checkbox" class="form-check-input" id="prioritizeTimeGaps" name="prioritize_gaps">
+                            <label class="form-check-label" for="prioritizeTimeGaps">Minimize gaps between classes</label>
+                        </div>
+                        
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-primary">Generate Schedule</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Schedule Display -->
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-header bg-info text-white">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">Generated Schedules</h5>
+                        <div>
+                            <span id="scheduleCount">0 schedules found</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div id="scheduleResults">
+                        <div class="text-center p-5">
+                            <p class="text-muted">Set your constraints and click "Generate Schedule" to create personalized class schedules.</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Schedule Grid View (New) -->
+                    <div id="scheduleGrid" class="row g-3 mb-4 d-none">
+                        <!-- Grid items will be inserted here -->
+                    </div>
+                    
+                    <!-- Detailed Schedule View -->
+                    <div id="scheduleDetail" class="d-none">
+                        <div class="d-flex justify-content-between mb-3">
+                            <button class="btn btn-secondary" id="backToGridBtn">
+                                <i class="bi bi-arrow-left"></i> Back to All Schedules
+                            </button>
+                            <div>
+                                <span id="detailScheduleTitle" class="fw-bold"></span>
+                            </div>
+                        </div>
+                        
+                        <!-- Weekly Calendar View -->
+                        <div id="weeklyCalendar">
+                            <div class="table-responsive">
+                                <table class="table table-bordered">
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 10%">Time</th>
+                                            <th style="width: 18%">Monday</th>
+                                            <th style="width: 18%">Tuesday</th>
+                                            <th style="width: 18%">Wednesday</th>
+                                            <th style="width: 18%">Thursday</th>
+                                            <th style="width: 18%">Friday</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="calendarBody">
+                                        <!-- Calendar slots will be generated dynamically -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        
+                        <!-- Course List -->
+                        <div id="courseList" class="mt-4">
+                            <h6>Courses in This Schedule:</h6>
+                            <ul class="list-group" id="scheduleCourses">
+                                <!-- Course items will be inserted here -->
+                            </ul>
+                        </div>
+                        
+                        <!-- Save Schedule Button -->
+                        <div class="mt-3 text-center" id="saveScheduleContainer">
+                            <button class="btn btn-success" id="saveScheduleBtn">Save This Schedule</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentSchedules = [];
+let currentScheduleIndex = 0;
+
+// Handle form submission via AJAX
+document.getElementById('scheduleConstraintsForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    // Show loading state
+    document.getElementById('scheduleResults').innerHTML = `
+        <div class="text-center p-5">
+            <div class="spinner-border text-primary mb-3" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p>Generating optimal schedules...</p>
+        </div>
+    `;
+    
+    // Hide both views while loading
+    document.getElementById('scheduleGrid').classList.add('d-none');
+    document.getElementById('scheduleDetail').classList.add('d-none');
+    
+    const formData = new FormData(this);
+    fetch('/generate_schedule', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            currentSchedules = data.schedules;
+            
+            if (currentSchedules.length > 0) {
+                // Update schedule count
+                document.getElementById('scheduleCount').textContent = `${currentSchedules.length} schedules found`;
+                
+                // Show grid view first
+                document.getElementById('scheduleGrid').classList.remove('d-none');
+                document.getElementById('scheduleDetail').classList.add('d-none');
+                
+                // Generate grid of schedules
+                generateScheduleGrid();
+                
+                // Clear loading message
+                document.getElementById('scheduleResults').innerHTML = '';
+            } else {
+                document.getElementById('scheduleResults').innerHTML = `
+                    <div class="alert alert-warning">
+                        <h5>No viable schedules found</h5>
+                        <p>Try adjusting your constraints and try again.</p>
+                    </div>
+                `;
+            }
+        } else {
+            document.getElementById('scheduleResults').innerHTML = `
+                <div class="alert alert-danger">
+                    <h5>Error</h5>
+                    <p>${data.error}</p>
+                </div>
+            `;
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        document.getElementById('scheduleResults').innerHTML = `
+            <div class="alert alert-danger">
+                <h5>Error</h5>
+                <p>An unexpected error occurred. Please try again.</p>
+            </div>
+        `;
+    });
+});
+
+// Generate grid view of all schedules
+function generateScheduleGrid() {
+    const gridContainer = document.getElementById('scheduleGrid');
+    gridContainer.innerHTML = '';
+    
+    // Create a card for each schedule
+    currentSchedules.forEach((schedule, index) => {
+        const courseCount = schedule.courses.length;
+        
+        // Process days with our new parseDays function
+        const allDays = schedule.courses.flatMap(c => {
+            if (!c.days) return [];
+            return parseDays(c.days);
+        });
+        
+        const uniqueDays = [...new Set(allDays)].sort().join('');
+        
+        // Create mini calendar representation - use our standard day codes
+        const dayMap = {'M': 'Mo', 'T': 'Tu', 'W': 'We', 'R': 'Th', 'F': 'Fr'};
+        const dayIndicators = ['M', 'T', 'W', 'R', 'F'].map(day => {
+            const hasClass = uniqueDays.includes(day);
+            return `<span class="day-indicator ${hasClass ? 'day-active' : 'day-inactive'}">${dayMap[day]}</span>`;
+        }).join('');
+        
+        // Calculate earliest and latest times
+        const earliestTime = Math.min(...schedule.courses
+            .filter(c => c.startTime)
+            .map(c => parseInt(c.startTime)));
+        const latestTime = Math.max(...schedule.courses
+            .filter(c => c.endTime)
+            .map(c => parseInt(c.endTime)));
+        
+        const timeRange = earliestTime && latestTime ? 
+            `${formatTime(earliestTime.toString())} - ${formatTime(latestTime.toString())}` :
+            'Times vary';
+        
+        // Create card
+        const card = document.createElement('div');
+        card.className = 'col-md-6 col-lg-4';
+        card.innerHTML = `
+            <div class="card h-100 schedule-card" data-schedule-index="${index}">
+                <div class="card-header">
+                    <h6 class="mb-0">Schedule ${index + 1}</h6>
+                </div>
+                <div class="card-body">
+                    <div class="mb-2 text-center day-indicators">${dayIndicators}</div>
+                    <p><strong>${courseCount}</strong> courses</p>
+                    <p class="text-muted small">${timeRange}</p>
+                    <div class="course-pills">
+                        ${schedule.courses.map(c => 
+                            `<span class="badge bg-secondary mb-1 me-1">${c.courseCode}</span>`
+                        ).join('')}
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <button class="btn btn-sm btn-primary w-100 view-schedule-btn"
+                            data-schedule-index="${index}">View Details</button>
+                </div>
+            </div>
+        `;
+        gridContainer.appendChild(card);
+        
+        // Add click event
+        setTimeout(() => {
+            const button = card.querySelector('.view-schedule-btn');
+            button.addEventListener('click', () => viewScheduleDetail(index));
+        }, 0);
+    });
+}
+
+// View detailed schedule
+function viewScheduleDetail(index) {
+    if (!currentSchedules || !currentSchedules[index]) return;
+    
+    currentScheduleIndex = index;
+    const schedule = currentSchedules[index];
+    
+    // Show detail view, hide grid
+    document.getElementById('scheduleGrid').classList.add('d-none');
+    document.getElementById('scheduleDetail').classList.remove('d-none');
+    
+    // Set title
+    document.getElementById('detailScheduleTitle').textContent = `Schedule ${index + 1} of ${currentSchedules.length}`;
+    
+    // Generate calendar and course list
+    generateDetailedCalendar(schedule.courses);
+    generateCourseList(schedule.courses);
+}
+
+// Generate detailed weekly calendar
+function generateDetailedCalendar(courses) {
+    console.log("Generating calendar with courses:", courses);
+    
+    // Time slots from 7am to 9pm in 30-minute increments
+    const timeSlots = [];
+    for (let hour = 7; hour <= 21; hour++) {
+        timeSlots.push(`${hour.toString().padStart(2, '0')}:00`);
+        timeSlots.push(`${hour.toString().padStart(2, '0')}:30`);
+    }
+    
+    // Create calendar grid
+    const calendarBody = document.getElementById('calendarBody');
+    calendarBody.innerHTML = '';
+    
+    // Create rows for each time slot first
+    const rows = [];
+    timeSlots.forEach((timeSlot) => {
+        const row = document.createElement('tr');
+        
+        // Add time column
+        const timeCell = document.createElement('td');
+        timeCell.textContent = timeSlot;
+        timeCell.className = 'time-column';
+        row.appendChild(timeCell);
+        
+        // Add placeholder cells for each day
+        ['M', 'T', 'W', 'R', 'F'].forEach(() => {
+            const cell = document.createElement('td');
+            cell.className = 'calendar-cell';
+            cell.innerHTML = '&nbsp;';
+            row.appendChild(cell);
+        });
+        
+        rows.push(row);
+        calendarBody.appendChild(row);
+    });
+    
+    // Now place courses into the calendar
+    courses.forEach(course => {
+        if (!course.days || !course.startTime || !course.endTime) return;
+        
+        // Parse days string into standardized format
+        const standardDays = parseDays(course.days);
+        console.log(`Course ${course.courseCode} days: ${course.days} -> parsed as: ${standardDays}`);
+        
+        // For each day the course is on
+        for (const day of standardDays) {
+            // Get the day index (0 = Monday, 1 = Tuesday, etc.)
+            const dayIndex = ['M', 'T', 'W', 'R', 'F'].indexOf(day);
+            if (dayIndex === -1) {
+                console.warn(`Unknown day code: ${day} for course ${course.courseCode}`);
+                continue;
+            }
+            
+            // Calculate start and end time indices
+            const startHour = parseInt(course.startTime.substring(0, 2));
+            const startMin = parseInt(course.startTime.substring(2));
+            const endHour = parseInt(course.endTime.substring(0, 2));
+            const endMin = parseInt(course.endTime.substring(2));
+            
+            const startIndex = (startHour - 7) * 2 + (startMin >= 30 ? 1 : 0);
+            const endIndex = (endHour - 7) * 2 + (endMin > 0 ? 1 : 0);
+            
+            // Skip if course is outside our displayed time range
+            if (startIndex < 0 || startIndex >= rows.length) continue;
+            
+            // Calculate duration in 30-min blocks
+            const duration = Math.max(1, endIndex - startIndex);
+            
+            // Get the cell to replace
+            const rowToModify = rows[startIndex];
+            if (!rowToModify) {
+                console.warn(`No row at index ${startIndex} for course ${course.courseCode}`);
+                continue;
+            }
+            
+            const cellToReplace = rowToModify.children[dayIndex + 1]; // +1 because first column is time
+            if (!cellToReplace) {
+                console.warn(`No cell at dayIndex ${dayIndex + 1} for course ${course.courseCode}`);
+                continue;
+            }
+            
+            // Set rowspan to cover the duration
+            cellToReplace.rowSpan = duration;
+            
+            // Remove cells from rows below that are now covered by rowspan
+            for (let i = 1; i < duration; i++) {
+                if (startIndex + i < rows.length) {
+                    const lowerRow = rows[startIndex + i];
+                    if (lowerRow && lowerRow.children[dayIndex + 1]) {
+                        lowerRow.removeChild(lowerRow.children[dayIndex + 1]);
+                    }
+                }
+            }
+            
+            // Style the cell with course info
+            const colorClass = getColorClassForCourse(course.courseCode);
+            cellToReplace.className = `calendar-cell ${colorClass}`;
+            cellToReplace.innerHTML = `
+                <div class="class-block">
+                    <div class="fw-bold">${course.courseCode}</div>
+                    <div class="small">Section ${course.section}</div>
+                    <div class="small">${formatTimeRange(course.startTime, course.endTime)}</div>
+                    <div class="small text-truncate">${course.location || 'TBA'}</div>
+                </div>
+            `;
+        }
+    });
+    
+    console.log("Calendar generation complete");
+}
+
+// Generate course list
+function generateCourseList(courses) {
+    const courseListElement = document.getElementById('scheduleCourses');
+    courseListElement.innerHTML = '';
+    
+    courses.forEach(course => {
+        // Convert day codes to readable format
+        let displayDays = course.days || 'N/A';
+        if (course.days) {
+            const days = parseDays(course.days);
+            const dayMap = {'M': 'Mon', 'T': 'Tue', 'W': 'Wed', 'R': 'Thu', 'F': 'Fri'};
+            displayDays = days.map(d => dayMap[d] || d).join(', ');
+        }
+        
+        const li = document.createElement('li');
+        li.className = 'list-group-item';
+        li.innerHTML = `
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <strong>${course.courseCode} (Section ${course.section})</strong>
+                    <div class="small">${displayDays} ${formatTimeRange(course.startTime, course.endTime)}</div>
+                </div>
+                <div>
+                    <span class="badge bg-info">${course.location || 'TBA'}</span>
+                </div>
+            </div>
+            <div class="small text-muted">${course.instructors || 'Instructor TBA'}</div>
+        `;
+        courseListElement.appendChild(li);
+    });
+}
+
+// Back to grid button handler
+document.getElementById('backToGridBtn').addEventListener('click', function() {
+    document.getElementById('scheduleDetail').classList.add('d-none');
+    document.getElementById('scheduleGrid').classList.remove('d-none');
+});
+
+// Save schedule button
+document.getElementById('saveScheduleBtn').addEventListener('click', () => {
+    if (currentSchedules && currentSchedules[currentScheduleIndex]) {
+        const courses = currentSchedules[currentScheduleIndex].courses;
+        
+        // Check for time conflicts before saving
+        if (has_time_conflict(courses)) {
+            alert('Cannot save schedule due to time conflicts. Please choose another schedule.');
+            return;
+        }
+        
+        // Proceed with saving if no conflicts
+        fetch('/save_schedule', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                schedule_id: currentScheduleIndex,
+                courses: courses.map(course => ({
+                    courseCode: course.courseCode,
+                    section: course.section
+                }))
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('Schedule saved successfully!');
+            } else {
+                alert('Error saving schedule: ' + data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('An unexpected error occurred while saving the schedule.');
+        });
+    }
+});
+
+// Get a consistent color class for a course
+function getColorClassForCourse(courseCode) {
+    // Simple hash function to get a number from a string
+    let hash = 0;
+    for (let i = 0; i < courseCode.length; i++) {
+        hash = ((hash << 5) - hash) + courseCode.charCodeAt(i);
+        hash |= 0; // Convert to 32bit integer
+    }
+    
+    // List of color classes
+    const colorClasses = [
+        'bg-primary text-white',
+        'bg-success text-white',
+        'bg-info text-dark',
+        'bg-warning text-dark',
+        'bg-danger text-white',
+        'bg-secondary text-white',
+        'bg-light text-dark'
+    ];
+    
+    // Get a color class based on the hash
+    return colorClasses[Math.abs(hash) % colorClasses.length];
+}
+
+// Improved time conflict detection function
+function has_time_conflict(courses) {
+    for (let i = 0; i < courses.length; i++) {
+        const course1 = courses[i];
+        
+        // Skip courses without timing info
+        if (!course1.days || !course1.startTime || !course1.endTime) continue;
+        
+        for (let j = i + 1; j < courses.length; j++) {
+            const course2 = courses[j];
+            
+            // Skip courses without timing info
+            if (!course2.days || !course2.startTime || !course2.endTime) continue;
+            
+            // Check for overlapping days
+            const hasDayOverlap = [...course1.days].some(day => course2.days.includes(day));
+            if (!hasDayOverlap) continue;
+            
+            // Convert times to minutes for easier comparison
+            const start1 = timeToMinutes(course1.startTime);
+            const end1 = timeToMinutes(course1.endTime);
+            const start2 = timeToMinutes(course2.startTime);
+            const end2 = timeToMinutes(course2.endTime);
+            
+            // Check if times overlap
+            if (Math.max(start1, start2) < Math.min(end1, end2)) {
+                console.warn(`Time conflict found between ${course1.courseCode} and ${course2.courseCode}`);
+                console.warn(`${course1.courseCode}: ${formatTimeRange(course1.startTime, course1.endTime)} on ${course1.days}`);
+                console.warn(`${course2.courseCode}: ${formatTimeRange(course2.startTime, course2.endTime)} on ${course2.days}`);
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+// Helper function to convert time (HHMM format) to minutes
+function timeToMinutes(time) {
+    if (!time || time.length < 4) return 0;
+    const hours = parseInt(time.substring(0, 2));
+    const minutes = parseInt(time.substring(2));
+    return hours * 60 + minutes;
+}
+
+// Parse days string to standardized format
+function parseDays(daysStr) {
+    if (!daysStr) return [];
+    
+    const result = [];
+    const dayMap = {
+        'M': 'M', // Monday
+        'T': 'T', // Tuesday
+        'W': 'W', // Wednesday
+        'R': 'R', // Thursday (standard format)
+        'F': 'F'  // Friday
+    };
+    
+    // Check for TH pattern (special case for Thursday)
+    let i = 0;
+    while (i < daysStr.length) {
+        if (i + 1 < daysStr.length && daysStr[i] === 'T' && 
+            (daysStr[i+1] === 'h' || daysStr[i+1] === 'H')) {
+            // This is "Th" for Thursday
+            result.push('R');  // R is our standardized code for Thursday
+            i += 2; // Skip both characters
+        } else {
+            // Normal single character day
+            const day = daysStr[i].toUpperCase();
+            if (dayMap[day]) {
+                result.push(dayMap[day]);
+            }
+            i++;
+        }
+    }
+    
+    return result;
+}
+
+// Add custom styles for the calendar and grid
+document.head.insertAdjacentHTML('beforeend', `
+    <style>
+        /* Grid view styles */
+        .schedule-card {
+            transition: transform 0.2s;
+            cursor: pointer;
+        }
+        .schedule-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        .day-indicators {
+            display: flex;
+            justify-content: space-between;
+        }
+        .day-indicator {
+            display: inline-block;
+            width: 30px;
+            text-align: center;
+            padding: 2px;
+            border-radius: 50%;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .day-active {
+            background-color: #0d6efd;
+            color: white;
+        }
+        .day-inactive {
+            background-color: #e9ecef;
+            color: #adb5bd;
+        }
+        .course-pills {
+            max-height: 80px;
+            overflow-y: auto;
+        }
+        
+        /* Calendar styles */
+        .time-column {
+            font-weight: bold;
+            width: 10%;
+            text-align: center;
+            vertical-align: middle;
+        }
+        
+        .calendar-cell {
+            height: 40px;
+            vertical-align: top;
+            width: 18%;
+            border: 1px solid #dee2e6;
+            padding: 0 !important;
+        }
+        
+        .class-block {
+            height: 100%;
+            width: 100%;
+            padding: 4px;
+            overflow: hidden;
+        }
+        
+        #calendarBody td:not(.time-column) {
+            position: relative;
+        }
+        
+        /* Add some hover effects for better interaction */
+        .class-block:hover {
+            opacity: 0.9;
+        }
+        
+        /* Add hover tooltip for truncated content */
+        .text-truncate:hover {
+            overflow: visible;
+            white-space: normal;
+            background-color: rgba(255, 255, 255, 0.9);
+            position: absolute;
+            z-index: 10;
+            padding: 2px 5px;
+            border-radius: 3px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+        }
+    </style>
+`);
+</script>
+{% endblock %}

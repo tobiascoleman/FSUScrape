@@ -1,0 +1,666 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <h1>Saved Schedules</h1>
+    
+    {% if schedules %}
+        <!-- Schedules List -->
+        <div class="row">
+            <div class="col-md-3">
+                <div class="list-group mb-4" id="schedule-list">
+                    {% for schedule in schedules %}
+                        <a href="#" class="list-group-item list-group-item-action schedule-item" 
+                           data-schedule-id="{{ schedule.id }}">
+                            <div class="d-flex w-100 justify-content-between">
+                                <h6 class="mb-1">{{ schedule.name }}</h6>
+                                <small>{{ schedule.courses|length }} courses</small>
+                            </div>
+                            <small class="text-muted">Created: {{ schedule.created_at }}</small>
+                        </a>
+                    {% endfor %}
+                </div>
+                
+                <div class="d-grid gap-2">
+                    <a href="{{ url_for('schedule_generator') }}" class="btn btn-primary">
+                        <i class="bi bi-plus-circle"></i> Create New Schedule
+                    </a>
+                </div>
+            </div>
+            
+            <div class="col-md-9">
+                <!-- Schedule Details Panel -->
+                <div class="card" id="schedule-details">
+                    <div class="card-header bg-info text-white">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0" id="schedule-title">Select a Schedule</h5>
+                            <div class="btn-group" id="schedule-actions" style="display: none;">
+                                <button class="btn btn-sm btn-light" id="delete-schedule-btn">
+                                    <i class="bi bi-trash"></i> Delete
+                                </button>
+                                <button class="btn btn-sm btn-light" id="monitor-all-btn">
+                                    <i class="bi bi-bell"></i> Monitor All
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="card-body">
+                        <div id="empty-state" class="text-center py-5">
+                            <p class="text-muted">Select a schedule from the list to view details</p>
+                        </div>
+                        
+                        <div id="schedule-content" style="display: none;">
+                            <!-- Weekly Calendar View -->
+                            <div id="weeklyCalendar" class="mb-4">
+                                <div class="table-responsive">
+                                    <table class="table table-bordered">
+                                        <thead>
+                                            <tr>
+                                                <th style="width: 10%">Time</th>
+                                                <th style="width: 18%">Monday</th>
+                                                <th style="width: 18%">Tuesday</th>
+                                                <th style="width: 18%">Wednesday</th>
+                                                <th style="width: 18%">Thursday</th>
+                                                <th style="width: 18%">Friday</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="calendarBody">
+                                            <!-- Calendar slots will be generated dynamically -->
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            
+                            <!-- Course List -->
+                            <div id="courseList">
+                                <h6 class="mb-3">Courses in This Schedule:</h6>
+                                <div class="table-responsive">
+                                    <table class="table table-striped" id="courses-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Course</th>
+                                                <th>Section</th>
+                                                <th>Schedule</th>
+                                                <th>Location</th>
+                                                <th>Availability</th>
+                                                <th>Monitoring</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            <!-- Course rows will be inserted here -->
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    {% else %}
+        <div class="alert alert-info">
+            <p>You don't have any saved schedules yet.</p>
+            <a href="{{ url_for('schedule_generator') }}" class="btn btn-primary mt-3">
+                <i class="bi bi-plus-circle"></i> Create Your First Schedule
+            </a>
+        </div>
+    {% endif %}
+</div>
+
+<!-- Confirmation Modal -->
+<div class="modal fade" id="confirmationModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="confirmationTitle">Confirm Action</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" id="confirmationMessage">
+                Are you sure you want to proceed?
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-danger" id="confirmButton">Confirm</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Store the schedules data from the server
+const schedules = {{ schedules|tojson }};
+let currentScheduleId = null;
+let confirmationCallback = null;
+
+// Initialize tooltip functionality
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize any Bootstrap tooltips
+    const tooltips = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+    tooltips.forEach(tooltip => {
+        new bootstrap.Tooltip(tooltip);
+    });
+    
+    // Click handler for schedule items
+    document.querySelectorAll('.schedule-item').forEach(item => {
+        item.addEventListener('click', function(e) {
+            e.preventDefault();
+            const scheduleId = parseInt(this.dataset.scheduleId);
+            showScheduleDetails(scheduleId);
+            
+            // Update active state
+            document.querySelectorAll('.schedule-item').forEach(el => {
+                el.classList.remove('active');
+            });
+            this.classList.add('active');
+        });
+    });
+    
+    // Delete schedule button
+    document.getElementById('delete-schedule-btn').addEventListener('click', function() {
+        if (!currentScheduleId) return;
+        
+        // Set up confirmation modal
+        document.getElementById('confirmationTitle').textContent = "Delete Schedule";
+        document.getElementById('confirmationMessage').textContent = 
+            "Are you sure you want to delete this schedule? This action cannot be undone.";
+        
+        // Set confirmation callback
+        confirmationCallback = () => deleteSchedule(currentScheduleId);
+        
+        // Show the modal
+        new bootstrap.Modal(document.getElementById('confirmationModal')).show();
+    });
+    
+    // Monitor all courses button
+    document.getElementById('monitor-all-btn').addEventListener('click', function() {
+        if (!currentScheduleId) return;
+        const schedule = schedules.find(s => s.id === currentScheduleId);
+        
+        if (!schedule || !schedule.courses || schedule.courses.length === 0) return;
+        
+        // Set up confirmation modal
+        document.getElementById('confirmationTitle').textContent = "Monitor All Courses";
+        document.getElementById('confirmationMessage').textContent = 
+            "Start monitoring all courses in this schedule? You'll receive notifications when seats become available.";
+        
+        // Set confirmation callback
+        confirmationCallback = () => monitorAllCourses(currentScheduleId);
+        
+        // Show the modal
+        new bootstrap.Modal(document.getElementById('confirmationModal')).show();
+    });
+    
+    // Confirmation modal button
+    document.getElementById('confirmButton').addEventListener('click', function() {
+        if (confirmationCallback) {
+            confirmationCallback();
+            bootstrap.Modal.getInstance(document.getElementById('confirmationModal')).hide();
+        }
+    });
+    
+    // Select first schedule by default if any exist
+    if (schedules.length > 0) {
+        document.querySelector('.schedule-item').click();
+    }
+});
+
+// Display schedule details
+function showScheduleDetails(scheduleId) {
+    currentScheduleId = scheduleId;
+    const schedule = schedules.find(s => s.id === scheduleId);
+    
+    if (!schedule) return;
+    
+    // Show schedule content, hide empty state
+    document.getElementById('empty-state').style.display = 'none';
+    document.getElementById('schedule-content').style.display = 'block';
+    document.getElementById('schedule-actions').style.display = 'flex';
+    
+    // Set schedule title
+    document.getElementById('schedule-title').textContent = schedule.name;
+    
+    // Generate calendar for this schedule
+    generateCalendar(schedule.courses);
+    
+    // Populate course table
+    populateCourseTable(schedule.courses);
+}
+
+// Parse days string to standardized format
+function parseDays(daysStr) {
+    if (!daysStr) return [];
+    
+    const result = [];
+    const dayMap = {
+        'M': 'M', // Monday
+        'T': 'T', // Tuesday
+        'W': 'W', // Wednesday
+        'R': 'R', // Thursday (standard format)
+        'F': 'F'  // Friday
+    };
+    
+    // Check for TH pattern (special case for Thursday)
+    let i = 0;
+    while (i < daysStr.length) {
+        if (i + 1 < daysStr.length && daysStr[i] === 'T' && 
+            (daysStr[i+1] === 'h' || daysStr[i+1] === 'H')) {
+            // This is "Th" for Thursday
+            result.push('R');  // R is our standardized code for Thursday
+            i += 2; // Skip both characters
+        } else {
+            // Normal single character day
+            const day = daysStr[i].toUpperCase();
+            if (dayMap[day]) {
+                result.push(dayMap[day]);
+            }
+            i++;
+        }
+    }
+    
+    return result;
+}
+
+// Generate calendar view for the selected schedule
+function generateCalendar(courses) {
+    // Time slots from 7am to 9pm in 30-minute increments
+    const timeSlots = [];
+    for (let hour = 7; hour <= 21; hour++) {
+        timeSlots.push(`${hour.toString().padStart(2, '0')}:00`);
+        timeSlots.push(`${hour.toString().padStart(2, '0')}:30`);
+    }
+    
+    // Create calendar grid
+    const calendarBody = document.getElementById('calendarBody');
+    calendarBody.innerHTML = '';
+    
+    // Create rows for each time slot first
+    const rows = [];
+    timeSlots.forEach((timeSlot) => {
+        const row = document.createElement('tr');
+        
+        // Add time column
+        const timeCell = document.createElement('td');
+        timeCell.textContent = timeSlot;
+        timeCell.className = 'time-column';
+        row.appendChild(timeCell);
+        
+        // Add placeholder cells for each day
+        ['M', 'T', 'W', 'R', 'F'].forEach(() => {
+            const cell = document.createElement('td');
+            cell.className = 'calendar-cell';
+            cell.innerHTML = '&nbsp;';
+            row.appendChild(cell);
+        });
+        
+        rows.push(row);
+        calendarBody.appendChild(row);
+    });
+    
+    // Now place courses into the calendar
+    courses.forEach(course => {
+        if (!course.days || !course.startTime || !course.endTime) return;
+        
+        // Parse days string into standardized format
+        const standardDays = parseDays(course.days);
+        
+        // For each day the course is on
+        for (const day of standardDays) {
+            // Get the day index (0 = Monday, 1 = Tuesday, etc.)
+            const dayIndex = ['M', 'T', 'W', 'R', 'F'].indexOf(day);
+            if (dayIndex === -1) continue;
+            
+            // Calculate start and end time indices
+            const startHour = parseInt(course.startTime.substring(0, 2));
+            const startMin = parseInt(course.startTime.substring(2));
+            const endHour = parseInt(course.endTime.substring(0, 2));
+            const endMin = parseInt(course.endTime.substring(2));
+            
+            const startIndex = (startHour - 7) * 2 + (startMin >= 30 ? 1 : 0);
+            const endIndex = (endHour - 7) * 2 + (endMin > 0 ? 1 : 0);
+            
+            // Skip if course is outside our displayed time range
+            if (startIndex < 0 || startIndex >= rows.length) continue;
+            
+            // Calculate duration in 30-min blocks
+            const duration = Math.max(1, endIndex - startIndex);
+            
+            // Get the cell to replace
+            const rowToModify = rows[startIndex];
+            if (!rowToModify) continue;
+            
+            const cellToReplace = rowToModify.children[dayIndex + 1]; // +1 because first column is time
+            if (!cellToReplace) continue;
+            
+            // Set rowspan to cover the duration
+            cellToReplace.rowSpan = duration;
+            
+            // Remove cells from rows below that are now covered by rowspan
+            for (let i = 1; i < duration; i++) {
+                if (startIndex + i < rows.length) {
+                    const lowerRow = rows[startIndex + i];
+                    if (lowerRow && lowerRow.children[dayIndex + 1]) {
+                        lowerRow.removeChild(lowerRow.children[dayIndex + 1]);
+                    }
+                }
+            }
+            
+            // Style the cell with course info
+            const colorClass = getColorClassForCourse(course.courseCode);
+            cellToReplace.className = `calendar-cell ${colorClass}`;
+            
+            // Display available seats differently
+            let availabilityDisplay = '';
+            if (course.seatsAvailable !== null && course.seatsCapacity) {
+                const availability = `${course.seatsAvailable}/${course.seatsCapacity}`;
+                const availClass = course.seatsAvailable > 0 ? 'text-success' : 'text-danger';
+                availabilityDisplay = `<div class="small ${availClass}">${availability} seats</div>`;
+            }
+            
+            cellToReplace.innerHTML = `
+                <div class="class-block">
+                    <div class="fw-bold">${course.courseCode}</div>
+                    <div class="small">Section ${course.section}</div>
+                    <div class="small">${formatTimeRange(course.startTime, course.endTime)}</div>
+                    ${availabilityDisplay}
+                </div>
+            `;
+        }
+    });
+}
+
+// Populate course table
+function populateCourseTable(courses) {
+    const tbody = document.querySelector('#courses-table tbody');
+    tbody.innerHTML = '';
+    
+    courses.forEach(course => {
+        const tr = document.createElement('tr');
+        
+        // Convert day codes to readable format
+        let displayDays = course.days || 'N/A';
+        if (course.days) {
+            const days = parseDays(course.days);
+            const dayMap = {'M': 'Mon', 'T': 'Tue', 'W': 'Wed', 'R': 'Thu', 'F': 'Fri'};
+            displayDays = days.map(d => dayMap[d] || d).join(', ');
+        }
+        
+        // Format availability
+        let availabilityDisplay = 'N/A';
+        if (course.seatsAvailable !== null && course.seatsCapacity) {
+            const availClass = course.seatsAvailable > 0 ? 'text-success' : 'text-danger';
+            availabilityDisplay = `<span class="${availClass}">${course.seatsAvailable}/${course.seatsCapacity}</span>`;
+        }
+        
+        // Monitoring toggle button
+        const isMonitored = course.is_monitored > 0;
+        const monitorButtonClass = isMonitored ? 'btn-danger' : 'btn-success';
+        const monitorButtonText = isMonitored ? 'Stop Monitoring' : 'Monitor';
+        
+        tr.innerHTML = `
+            <td>${course.courseCode}</td>
+            <td>${course.section}</td>
+            <td>${displayDays} ${formatTimeRange(course.startTime, course.endTime)}</td>
+            <td>${course.location || 'TBA'}</td>
+            <td>${availabilityDisplay}</td>
+            <td>
+                <button class="btn btn-sm ${monitorButtonClass} toggle-monitor-btn"
+                        data-course-code="${course.courseCode}"
+                        data-section="${course.section}"
+                        data-monitoring="${isMonitored ? '1' : '0'}">
+                    ${monitorButtonText}
+                </button>
+            </td>
+        `;
+        
+        tbody.appendChild(tr);
+    });
+    
+    // Add event listeners to monitor buttons
+    document.querySelectorAll('.toggle-monitor-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const courseCode = this.dataset.courseCode;
+            const section = this.dataset.section;
+            const isMonitoring = this.dataset.monitoring === '1';
+            
+            toggleCourseMonitoring(courseCode, section, !isMonitoring, this);
+        });
+    });
+}
+
+// Get a consistent color class for a course
+function getColorClassForCourse(courseCode) {
+    // Simple hash function to get a number from a string
+    let hash = 0;
+    for (let i = 0; i < courseCode.length; i++) {
+        hash = ((hash << 5) - hash) + courseCode.charCodeAt(i);
+        hash |= 0; // Convert to 32bit integer
+    }
+    
+    // List of color classes
+    const colorClasses = [
+        'bg-primary text-white',
+        'bg-success text-white',
+        'bg-info text-dark',
+        'bg-warning text-dark',
+        'bg-danger text-white',
+        'bg-secondary text-white',
+        'bg-light text-dark'
+    ];
+    
+    // Get a color class based on the hash
+    return colorClasses[Math.abs(hash) % colorClasses.length];
+}
+
+// Delete a schedule
+function deleteSchedule(scheduleId) {
+    fetch('/delete_schedule', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            schedule_id: scheduleId
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Remove from UI
+            const scheduleItem = document.querySelector(`.schedule-item[data-schedule-id="${scheduleId}"]`);
+            if (scheduleItem) {
+                scheduleItem.remove();
+            }
+            
+            // Remove from data
+            const index = schedules.findIndex(s => s.id === scheduleId);
+            if (index !== -1) {
+                schedules.splice(index, 1);
+            }
+            
+            // Reset UI if no schedules left
+            if (schedules.length === 0) {
+                document.getElementById('empty-state').style.display = 'block';
+                document.getElementById('schedule-content').style.display = 'none';
+                document.getElementById('schedule-actions').style.display = 'none';
+                document.getElementById('schedule-title').textContent = 'No Schedules';
+                currentScheduleId = null;
+            } else {
+                // Select another schedule
+                document.querySelector('.schedule-item').click();
+            }
+            
+            // Show success message
+            showAlert('Schedule deleted successfully', 'success');
+        } else {
+            showAlert('Error: ' + data.error, 'danger');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showAlert('An unexpected error occurred', 'danger');
+    });
+}
+
+// Monitor all courses in a schedule
+function monitorAllCourses(scheduleId) {
+    const schedule = schedules.find(s => s.id === scheduleId);
+    if (!schedule || !schedule.courses || schedule.courses.length === 0) return;
+    
+    const courseSelections = schedule.courses.map(course => ({
+        courseCode: course.courseCode,
+        section: course.section,
+        monitor: true
+    }));
+    
+    fetch('/monitor_schedule_courses', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            schedule_id: scheduleId,
+            courses: courseSelections
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Update UI buttons
+            document.querySelectorAll('.toggle-monitor-btn').forEach(btn => {
+                btn.classList.remove('btn-success');
+                btn.classList.add('btn-danger');
+                btn.textContent = 'Stop Monitoring';
+                btn.dataset.monitoring = '1';
+            });
+            
+            // Update data model
+            schedule.courses.forEach(course => {
+                course.is_monitored = 1;
+            });
+            
+            showAlert('All courses are now being monitored', 'success');
+        } else {
+            showAlert('Error: ' + data.error, 'danger');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showAlert('An unexpected error occurred', 'danger');
+    });
+}
+
+// Toggle monitoring for a specific course
+function toggleCourseMonitoring(courseCode, section, monitor, buttonElement) {
+    // Disable button while processing
+    buttonElement.disabled = true;
+    buttonElement.textContent = monitor ? 'Starting...' : 'Stopping...';
+    
+    fetch('/monitor_schedule_courses', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            schedule_id: currentScheduleId,
+            courses: [{
+                courseCode: courseCode,
+                section: section,
+                monitor: monitor
+            }]
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Update button
+            if (monitor) {
+                buttonElement.classList.remove('btn-success');
+                buttonElement.classList.add('btn-danger');
+                buttonElement.textContent = 'Stop Monitoring';
+                buttonElement.dataset.monitoring = '1';
+            } else {
+                buttonElement.classList.remove('btn-danger');
+                buttonElement.classList.add('btn-success');
+                buttonElement.textContent = 'Monitor';
+                buttonElement.dataset.monitoring = '0';
+            }
+            
+            // Update data model
+            const schedule = schedules.find(s => s.id === currentScheduleId);
+            if (schedule) {
+                const course = schedule.courses.find(c => 
+                    c.courseCode === courseCode && c.section === section);
+                if (course) {
+                    course.is_monitored = monitor ? 1 : 0;
+                }
+            }
+            
+            showAlert(`Course ${monitor ? 'is now being monitored' : 'monitoring stopped'}`, 'success');
+        } else {
+            showAlert('Error: ' + data.error, 'danger');
+            buttonElement.disabled = false;
+            buttonElement.textContent = monitor ? 'Monitor' : 'Stop Monitoring';
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showAlert('An unexpected error occurred', 'danger');
+        buttonElement.disabled = false;
+        buttonElement.textContent = monitor ? 'Monitor' : 'Stop Monitoring';
+    });
+}
+
+// Show alert message
+function showAlert(message, type = 'info') {
+    const alertContainer = document.createElement('div');
+    alertContainer.className = `alert alert-${type} alert-dismissible fade show`;
+    alertContainer.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    `;
+    
+    // Insert at the top of the container
+    const container = document.querySelector('.container');
+    container.insertBefore(alertContainer, container.firstChild);
+    
+    // Auto-dismiss after 3 seconds
+    setTimeout(() => {
+        alertContainer.classList.remove('show');
+        setTimeout(() => alertContainer.remove(), 150);
+    }, 3000);
+}
+</script>
+
+<style>
+/* Calendar styles */
+.time-column {
+    font-weight: bold;
+    width: 10%;
+    text-align: center;
+    vertical-align: middle;
+}
+
+.calendar-cell {
+    height: 40px;
+    vertical-align: top;
+    width: 18%;
+    border: 1px solid #dee2e6;
+    padding: 0 !important;
+}
+
+.class-block {
+    height: 100%;
+    width: 100%;
+    padding: 4px;
+    overflow: hidden;
+}
+
+/* Active schedule item */
+.schedule-item.active {
+    background-color: #e9ecef;
+    border-color: #0d6efd;
+    font-weight: bold;
+}
+</style>
+{% endblock %}

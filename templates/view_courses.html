@@ -1,137 +1,440 @@
 {% extends "base.html" %}
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>View Courses</title>
-</head>
-<body>
-    {% block content %}
-    <div class="container mt-4">
-        <h2>Course Listings</h2>
-        <div class="accordion" id="courseAccordion">
-            {% for course_code, sections in grouped_courses.items() %}
-            <div class="accordion-item">
-                <h2 class="accordion-header">
-                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" 
-                             data-bs-target="#collapse{{ loop.index }}" aria-expanded="false">
-                        {{ course_code }}
-                        <span class="badge bg-primary ms-2">{{ sections|length }} sections</span>
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Course Listings</h2>
+    
+    <div class="accordion" id="courseAccordion">
+        {% for course_code, sections in grouped_courses.items() %}
+        <div class="accordion-item">
+            <h2 class="accordion-header d-flex">
+                <button class="accordion-button collapsed flex-grow-1" type="button" data-bs-toggle="collapse" 
+                         data-bs-target="#collapse{{ loop.index }}" aria-expanded="false">
+                    {{ course_code }}
+                    <span class="badge bg-primary ms-2">{{ sections|length }} sections</span>
+                </button>
+                <div class="d-flex align-items-center me-2">
+                    <button class="btn btn-sm btn-warning me-1" 
+                            onclick="syncCourse('{{ course_code }}', {{ sections[0].year }}, '{{ sections[0].term }}')">
+                        <i class="bi bi-arrow-clockwise"></i> Sync
                     </button>
-                </h2>
-                <div id="collapse{{ loop.index }}" class="accordion-collapse collapse" data-bs-parent="#courseAccordion">
-                    <div class="accordion-body">
-                        <div class="table-responsive">
-                            <table class="table table-striped">
-                                <thead>
-                                    <tr>
-                                        <th>Monitor</th>
-                                        <th>Section</th>
-                                        <th>Available Seats</th>
-                                        <th>Total Seats</th>
-                                        <th>Instructors</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {% for section in sections %}
-                                    <tr>
-                                        <td>
-                                            <input type="checkbox" 
-                                                   class="monitor-checkbox" 
-                                                   data-course="{{ section.courseCode }}"
+                    <button class="btn btn-sm btn-danger" 
+                            onclick="deleteCourse('{{ course_code }}')">
+                        <i class="bi bi-trash"></i> Delete
+                    </button>
+                </div>
+            </h2>
+            <div id="collapse{{ loop.index }}" class="accordion-collapse collapse" data-bs-parent="#courseAccordion">
+                <div class="accordion-body">
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Section</th>
+                                    <th>Available Seats</th>
+                                    <th>Total Seats</th>
+                                    <th>Schedule</th>
+                                    <th>Location</th>
+                                    <th>Term</th>
+                                    <th>Instructors</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for section in sections %}
+                                <tr>
+                                    <td>{{ section.section }}</td>
+                                    <td>{{ section.seatsAvailable }}</td>
+                                    <td>{{ section.seatsCapacity }}</td>
+                                    <td>
+                                        {% if section.days %}
+                                            {{ section.days }} 
+                                            <span class="formatted-time" data-start-time="{{ section.startTime }}" data-end-time="{{ section.endTime }}">
+                                                {{ section.startTime }}-{{ section.endTime }}
+                                            </span>
+                                        {% else %}
+                                            N/A
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ section.location or 'N/A' }}</td>
+                                    <td>{{ section.term }} {{ section.year }}</td>
+                                    <td>{{ section.instructors or 'No instructor listed' }}</td>
+                                    <td>
+                                        <div class="btn-group">
+                                            <button class="btn btn-sm toggle-monitor-btn {% if section.is_monitored %}btn-danger{% else %}btn-success{% endif %}" 
+                                                   data-course-code="{{ section.courseCode }}" 
                                                    data-section="{{ section.section }}"
-                                                   {% if section.is_monitored %}checked{% endif %}>
-                                        </td>
-                                        <td>{{ section.section }}</td>
-                                        <td>{{ section.seatsAvailable }}</td>
-                                        <td>{{ section.seatsCapacity }}</td>
-                                        <td>{{ section.instructors or 'No instructor listed' }}</td>
-                                    </tr>
-                                    {% endfor %}
-                                </tbody>
-                            </table>
-                        </div>
+                                                   data-year="{{ section.year }}"
+                                                   data-term="{{ section.term }}"
+                                                   data-monitoring="{{ section.is_monitored }}"
+                                                   onclick="return handleMonitorButton(this)">
+                                                {% if section.is_monitored %}Stop Monitoring{% else %}Monitor{% endif %}
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>
-            {% endfor %}
         </div>
+        {% endfor %}
     </div>
+</div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
-    <script>
-    // Request notification permission when toggling first monitor checkbox
-    let notificationPermission = false;
+<script>
+// Time conversion function for 24-hour to 12-hour format
+function convertTo12HourFormat(time24) {
+    if (!time24 || typeof time24 !== 'string') return 'N/A';
+    
+    // Extract hours and minutes
+    const hours = parseInt(time24.substring(0, 2));
+    const minutes = time24.substring(2);
+    
+    // Convert hours to 12-hour format
+    let hours12 = hours % 12;
+    if (hours12 === 0) hours12 = 12; // Handle midnight/noon
+    
+    // Determine AM/PM
+    const period = hours >= 12 ? 'PM' : 'AM';
+    
+    // Return formatted time
+    return `${hours12}:${minutes} ${period}`;
+}
 
-    async function requestNotificationPermission() {
-        if (!("Notification" in window)) {
-            alert("This browser does not support notifications");
-            return false;
-        }
+// Initialize notification permission
+let notificationPermission = false;
 
-        let permission = await Notification.requestPermission();
-        notificationPermission = permission === "granted";
-        return notificationPermission;
+// Listen for notifications
+socket.on('notification', function(data) {
+    if (data.message && data.message.includes('2FA authentication required')) {
+        // Show 2FA alert with custom styling
+        const alertDiv = document.createElement('div');
+        alertDiv.className = 'alert alert-warning alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3';
+        alertDiv.setAttribute('role', 'alert');
+        alertDiv.innerHTML = `
+            <strong>2FA Required!</strong> ${data.message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        `;
+        document.body.appendChild(alertDiv);
+        
+        // Remove alert after 30 seconds
+        setTimeout(() => {
+            alertDiv.remove();
+        }, 30000);
+    } else if (notificationPermission) {
+        // Regular course availability notification
+        new Notification("Course Update", {
+            body: data.message,
+            icon: "/static/favicon.ico"
+        });
+    }
+});
+
+// Request notification permission
+async function requestNotificationPermission() {
+    if (!("Notification" in window)) {
+        alert("This browser does not support notifications");
+        return false;
     }
 
-    // Connect to WebSocket
-    const socket = io();
+    let permission = await Notification.requestPermission();
+    notificationPermission = permission === "granted";
+    return notificationPermission;
+}
 
-    // Listen for notifications
-    socket.on('notification', function(data) {
-        if (data.message.includes('2FA authentication required')) {
-            // Show 2FA alert with custom styling
-            const alertDiv = document.createElement('div');
-            alertDiv.className = 'alert alert-warning alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3';
-            alertDiv.setAttribute('role', 'alert');
-            alertDiv.innerHTML = `
-                <strong>2FA Required!</strong> ${data.message}
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-            `;
-            document.body.appendChild(alertDiv);
-            
-            // Remove alert after 30 seconds
-            setTimeout(() => {
-                alertDiv.remove();
-            }, 30000);
-        } else if (notificationPermission) {
-            // Regular course availability notification
-            new Notification("Course Update", {
-                body: data.message,
-                icon: "/static/favicon.ico"
-            });
+// Convert times and setup monitoring when DOM is loaded
+document.addEventListener('DOMContentLoaded', function() {
+    // Check notification permission
+    if (Notification.permission === 'granted') {
+        notificationPermission = true;
+    }
+    
+    // Convert all times in the table
+    const timeSpans = document.querySelectorAll('.formatted-time');
+    timeSpans.forEach(span => {
+        const startTime = span.dataset.startTime;
+        const endTime = span.dataset.endTime;
+        
+        if (startTime && endTime) {
+            const formattedStart = convertTo12HourFormat(startTime);
+            const formattedEnd = convertTo12HourFormat(endTime);
+            span.textContent = `${formattedStart} - ${formattedEnd}`;
         }
     });
+});
 
-    document.querySelectorAll('.monitor-checkbox').forEach(checkbox => {
-        checkbox.addEventListener('change', async function() {
-            if (this.checked && !notificationPermission) {
-                const granted = await requestNotificationPermission();
-                if (!granted) {
-                    alert("Notifications are required for monitoring courses!");
-                    this.checked = false;
-                    return;
+// Function to handle monitor button clicks
+function handleMonitorButton(buttonElement) {
+    // Extract data from data attributes
+    const courseCode = buttonElement.dataset.courseCode;
+    const section = buttonElement.dataset.section;
+    const isMonitoring = buttonElement.dataset.monitoring === "1";
+    const year = buttonElement.dataset.year;
+    const term = buttonElement.dataset.term;
+    
+    // Validate data before proceeding
+    if (!courseCode || !section) {
+        alert("Error: Missing course information");
+        return false;
+    }
+    
+    // When starting to monitor, validate year and term
+    if (!isMonitoring) {
+        if (!year || !term) {
+            alert("Error: Year and term are required to monitor a course");
+            return false;
+        }
+        
+        // Request notification permission if needed
+        if (!notificationPermission) {
+            requestNotificationPermission().then(granted => {
+                if (granted) {
+                    sendToggleMonitorRequest(buttonElement, courseCode, section, isMonitoring, year, term);
+                } else {
+                    alert("Notifications are required for monitoring courses");
                 }
-            }
-
-            const courseCode = this.dataset.course;
-            const section = this.dataset.section;
-            
-            fetch('/toggle_monitor', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    courseCode: courseCode,
-                    section: section,
-                    monitor: this.checked
-                })
             });
-        });
+        } else {
+            sendToggleMonitorRequest(buttonElement, courseCode, section, isMonitoring, year, term);
+        }
+    } else {
+        // Stopping monitoring doesn't need permission check
+        sendToggleMonitorRequest(buttonElement, courseCode, section, isMonitoring, year, term);
+    }
+    
+    return false; // Prevent default button action
+}
+
+// Function to send the monitoring request
+function sendToggleMonitorRequest(buttonElement, courseCode, section, isMonitoring, year, term) {
+    // Show loading state
+    const originalText = buttonElement.textContent;
+    buttonElement.textContent = isMonitoring ? "Stopping..." : "Starting...";
+    buttonElement.disabled = true;
+    
+    // Prepare request body
+    const requestBody = {
+        courseCode: courseCode,
+        section: section,
+        monitor: !isMonitoring
+    };
+    
+    // Add year and term only when starting to monitor
+    if (!isMonitoring) {
+        requestBody.year = year;
+        requestBody.term = term;
+    }
+    
+    // Make the request
+    fetch('/toggle_monitor', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Update button state
+            if (isMonitoring) {
+                buttonElement.textContent = "Start Monitoring";
+                buttonElement.classList.remove("btn-danger");
+                buttonElement.classList.add("btn-success");
+                buttonElement.dataset.monitoring = "0";
+            } else {
+                buttonElement.textContent = "Stop Monitoring";
+                buttonElement.classList.remove("btn-success");
+                buttonElement.classList.add("btn-danger");
+                buttonElement.dataset.monitoring = "1";
+            }
+            
+            // Show success message
+            const alertDiv = document.createElement('div');
+            alertDiv.className = 'alert alert-success alert-dismissible fade show';
+            alertDiv.setAttribute('role', 'alert');
+            alertDiv.innerHTML = `
+                ${data.message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            `;
+            document.querySelector('.container').prepend(alertDiv);
+            
+            // Auto-dismiss after 3 seconds
+            setTimeout(() => {
+                alertDiv.classList.remove('show');
+                setTimeout(() => alertDiv.remove(), 150);
+            }, 3000);
+        } else {
+            throw new Error(data.error || "Unknown error");
+        }
+    })
+    .catch(error => {
+        alert("Error: " + error.message);
+        buttonElement.textContent = originalText;
+    })
+    .finally(() => {
+        buttonElement.disabled = false;
     });
-    </script>
-    {% endblock %}
-</body>
-</html>
+}
+
+// Function to delete an entire course
+function deleteCourse(courseCode) {
+    if (!confirm(`Are you sure you want to delete ALL SECTIONS of ${courseCode}?\nThis action cannot be undone.`)) {
+        return;
+    }
+    
+    showAlert('info', `Deleting all sections of ${courseCode}...`);
+    
+    fetch('/delete_course', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            courseCode: courseCode,
+            deleteAll: true
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Success - remove the course from the UI
+            showAlert('success', `${courseCode} deleted successfully.`);
+            
+            // Find and remove the entire accordion item
+            const courseElements = document.querySelectorAll('.accordion-button');
+            courseElements.forEach(element => {
+                if (element.textContent.includes(courseCode)) {
+                    const accordionItem = element.closest('.accordion-item');
+                    if (accordionItem) {
+                        accordionItem.remove();
+                    }
+                }
+            });
+        } else {
+            // Error
+            showAlert('danger', `Failed to delete course: ${data.error}`);
+        }
+    })
+    .catch(error => {
+        showAlert('danger', `Error: ${error.message}`);
+    });
+}
+
+// Function to sync an entire course
+function syncCourse(courseCode, year, term) {
+    showAlert('info', `Syncing all sections of ${courseCode}...`);
+    
+    fetch('/sync_course', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            courseCode: courseCode,
+            syncAll: true,
+            year: year,
+            term: term
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Success - reload the page to show updated data
+            showAlert('success', `${courseCode} synced successfully.`);
+            setTimeout(() => {
+                window.location.reload();
+            }, 1500);
+        } else {
+            // Error
+            showAlert('danger', `Failed to sync course: ${data.error}`);
+        }
+    })
+    .catch(error => {
+        showAlert('danger', `Error: ${error.message}`);
+    });
+}
+
+// Helper function to display alerts
+function showAlert(type, message) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    `;
+    
+    // Insert at the top of the container
+    const container = document.querySelector('.container');
+    container.insertBefore(alertDiv, container.firstChild);
+    
+    // Auto-dismiss after 3 seconds
+    setTimeout(() => {
+        alertDiv.classList.remove('show');
+        setTimeout(() => alertDiv.remove(), 150);
+    }, 3000);
+}
+</script>
+
+<style>
+/* Add CSS to make buttons look good in the accordion header */
+.accordion-button {
+    position: relative;
+}
+
+.course-action-btn {
+    z-index: 3;
+    margin: 0 2px;
+}
+
+.accordion-button:not(.collapsed) .course-action-btn {
+    background-color: #f8f9fa;
+    color: #212529;
+}
+
+.accordion-button .btn-group {
+    margin-right: 40px; /* Make room for the accordion arrow */
+}
+
+/* Updated accordion header styles */
+.accordion-header.d-flex {
+    background-color: #f8f9fa;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.125);
+}
+
+.accordion-header.d-flex .accordion-button {
+    width: auto;
+    border: none;
+    background-color: transparent;
+}
+
+.accordion-header.d-flex .accordion-button::after {
+    margin-right: 0;
+}
+
+.accordion-header.d-flex .accordion-button:not(.collapsed) {
+    color: #0c63e4;
+    background-color: transparent;
+    box-shadow: none;
+}
+
+/* Action buttons container */
+.accordion-header .d-flex.align-items-center {
+    padding: 0.5rem 1rem;
+}
+
+/* Remove older button styles that are no longer needed */
+.course-action-btn {
+    z-index: 1;
+}
+
+/* Make sure the buttons are visible in all states */
+.accordion-button.collapsed + .d-flex .btn,
+.accordion-button:not(.collapsed) + .d-flex .btn {
+    z-index: 2;
+}
+</style>
+{% endblock %}
