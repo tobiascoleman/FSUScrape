@@ -34,6 +34,17 @@ def init_courses():
             )
         """)
 
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS monitored_courses (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT,
+                courseCode TEXT,      -- Subject code (e.g., 'MAC')
+                section TEXT,         -- Combined course-section (e.g., '2311-001')
+                FOREIGN KEY (username) REFERENCES users(username),
+                UNIQUE(username, courseCode, section)
+            )
+        """)
+
         conn.commit()
 
 def init_users():

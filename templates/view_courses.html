@@ -8,28 +8,130 @@
 </head>
 <body>
     {% block content %}
-    <h1>View Courses</h1>
-    <table>
-        <thead>
-            <tr>
-                <th>Course Code</th>
-                <th>Section</th>
-                <th>Seats Capacity</th>
-                <th>Seats Available</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for course in courses %}
-            <tr>
-                <td>{{ course['courseCode'] }}</td>
-                <td>{{ course['section'] }}</td>
-                <td>{{ course['seatsCapacity'] }}</td>
-                <td>{{ course['seatsAvailable'] }}</td>
-            </tr>
+    <div class="container mt-4">
+        <h2>Course Listings</h2>
+        <div class="accordion" id="courseAccordion">
+            {% for course_code, sections in grouped_courses.items() %}
+            <div class="accordion-item">
+                <h2 class="accordion-header">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" 
+                             data-bs-target="#collapse{{ loop.index }}" aria-expanded="false">
+                        {{ course_code }}
+                        <span class="badge bg-primary ms-2">{{ sections|length }} sections</span>
+                    </button>
+                </h2>
+                <div id="collapse{{ loop.index }}" class="accordion-collapse collapse" data-bs-parent="#courseAccordion">
+                    <div class="accordion-body">
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Monitor</th>
+                                        <th>Section</th>
+                                        <th>Available Seats</th>
+                                        <th>Total Seats</th>
+                                        <th>Instructors</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for section in sections %}
+                                    <tr>
+                                        <td>
+                                            <input type="checkbox" 
+                                                   class="monitor-checkbox" 
+                                                   data-course="{{ section.courseCode }}"
+                                                   data-section="{{ section.section }}"
+                                                   {% if section.is_monitored %}checked{% endif %}>
+                                        </td>
+                                        <td>{{ section.section }}</td>
+                                        <td>{{ section.seatsAvailable }}</td>
+                                        <td>{{ section.seatsCapacity }}</td>
+                                        <td>{{ section.instructors or 'No instructor listed' }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
             {% endfor %}
-        </tbody>
-    </table>
-    <a href="{{ url_for('dashboard') }}">Back to Dashboard</a>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script>
+    // Request notification permission when toggling first monitor checkbox
+    let notificationPermission = false;
+
+    async function requestNotificationPermission() {
+        if (!("Notification" in window)) {
+            alert("This browser does not support notifications");
+            return false;
+        }
+
+        let permission = await Notification.requestPermission();
+        notificationPermission = permission === "granted";
+        return notificationPermission;
+    }
+
+    // Connect to WebSocket
+    const socket = io();
+
+    // Listen for notifications
+    socket.on('notification', function(data) {
+        if (data.message.includes('2FA authentication required')) {
+            // Show 2FA alert with custom styling
+            const alertDiv = document.createElement('div');
+            alertDiv.className = 'alert alert-warning alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3';
+            alertDiv.setAttribute('role', 'alert');
+            alertDiv.innerHTML = `
+                <strong>2FA Required!</strong> ${data.message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            `;
+            document.body.appendChild(alertDiv);
+            
+            // Remove alert after 30 seconds
+            setTimeout(() => {
+                alertDiv.remove();
+            }, 30000);
+        } else if (notificationPermission) {
+            // Regular course availability notification
+            new Notification("Course Update", {
+                body: data.message,
+                icon: "/static/favicon.ico"
+            });
+        }
+    });
+
+    document.querySelectorAll('.monitor-checkbox').forEach(checkbox => {
+        checkbox.addEventListener('change', async function() {
+            if (this.checked && !notificationPermission) {
+                const granted = await requestNotificationPermission();
+                if (!granted) {
+                    alert("Notifications are required for monitoring courses!");
+                    this.checked = false;
+                    return;
+                }
+            }
+
+            const courseCode = this.dataset.course;
+            const section = this.dataset.section;
+            
+            fetch('/toggle_monitor', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    courseCode: courseCode,
+                    section: section,
+                    monitor: this.checked
+                })
+            });
+        });
+    });
+    </script>
     {% endblock %}
 </body>
 </html>
