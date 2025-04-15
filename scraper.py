@@ -123,8 +123,8 @@ def process_courses(data, year, term):
     if data:
         if 'sections' in data:
             for course in data['sections']:
-                if course.get("location") != "Main, Tallahassee":
-                    break
+                if course.get("campusCode", "MAIN") != "MAIN":
+                    continue
                 # Extract course details from the section
                 course_code = course.get("course", "Unknown")
                 subject_id = course.get("subjectId", "Unkown")
