@@ -44,12 +44,18 @@
                                 </thead>
                                 <tbody>
                                     {% for course in monitored_courses %}
-                                    <tr>
+                                    <tr id="course-{{ course.courseCode }}-{{ course.section }}" 
+                                        class="{% if highlight_course == course.courseCode + '-' + course.section %}highlight-row{% endif %}
+                                               {% if course.seatsAvailable > 0 %}has-seats{% endif %}">
                                         <td>{{ course.courseCode }}</td>
                                         <td>{{ course.section }}</td>
                                         <td>
                                             {% if course.seatsCapacity %}
-                                                {{ course.seatsAvailable }}/{{ course.seatsCapacity }}
+                                                {% if course.seatsAvailable > 0 %}
+                                                <span class="badge bg-success">{{ course.seatsAvailable }}/{{ course.seatsCapacity }}</span>
+                                                {% else %}
+                                                <span class="badge bg-danger">{{ course.seatsAvailable }}/{{ course.seatsCapacity }}</span>
+                                                {% endif %}
                                             {% else %}
                                                 N/A
                                             {% endif %}
@@ -67,12 +73,21 @@
                                         <td>{{ course.term }} {{ course.year }}</td>
                                         <td>{{ course.instructors }}</td>
                                         <td>
-                                            <button class="btn btn-sm btn-danger toggle-monitor-btn" 
-                                                    data-course-code="{{ course.courseCode }}" 
-                                                    data-section="{{ course.section }}" 
-                                                    data-monitoring="1">
-                                                Stop Monitoring
-                                            </button>
+                                            <div class="btn-group" role="group">
+                                                <button class="btn btn-sm btn-danger toggle-monitor-btn" 
+                                                        data-course-code="{{ course.courseCode }}" 
+                                                        data-section="{{ course.section }}" 
+                                                        data-monitoring="1">
+                                                    Stop Monitoring
+                                                </button>
+                                                <button class="btn btn-sm btn-primary sync-course-btn" 
+                                                        data-course-code="{{ course.courseCode }}" 
+                                                        data-section="{{ course.section }}"
+                                                        data-year="{{ course.year }}" 
+                                                        data-term="{{ course.term }}">
+                                                    Sync Now
+                                                </button>
+                                            </div>
                                         </td>
                                     </tr>
                                     {% endfor %}
@@ -89,6 +104,25 @@
         </div>
     </div>
 </div>
+
+<style>
+/* Highlight style for newly available courses */
+.highlight-row {
+    animation: highlight-pulse 2s ease infinite;
+    background-color: rgba(40, 167, 69, 0.1) !important;
+}
+
+@keyframes highlight-pulse {
+    0% { background-color: rgba(40, 167, 69, 0.1); }
+    50% { background-color: rgba(40, 167, 69, 0.3); }
+    100% { background-color: rgba(40, 167, 69, 0.1); }
+}
+
+/* Style for rows with available seats */
+.has-seats {
+    background-color: rgba(40, 167, 69, 0.05) !important;
+}
+</style>
 
 <script>
 // Time conversion function for 24-hour to 12-hour format
@@ -126,10 +160,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Handle toggle monitoring buttons
     const toggleButtons = document.querySelectorAll('.toggle-monitor-btn');
-    
     toggleButtons.forEach(button => {
         button.addEventListener('click', async function(event) {
-            // Prevent any default action
             event.preventDefault();
             
             console.log("Dashboard toggle button clicked");
@@ -141,6 +173,7 @@ document.addEventListener('DOMContentLoaded', function() {
             console.log(`Button data: Course ${courseCode}, Section ${section}, isMonitoring: ${isMonitoring}`);
             
             // Show processing state
+            const originalText = this.textContent;
             this.textContent = 'Processing...';
             this.disabled = true;
             
@@ -166,17 +199,75 @@ document.addEventListener('DOMContentLoaded', function() {
                     window.location.reload();
                 } else {
                     alert('Error: ' + data.error);
-                    this.textContent = 'Stop Monitoring';
+                    this.textContent = originalText;
                     this.disabled = false;
                 }
             } catch (error) {
                 console.error('Error:', error);
                 alert('Failed to update monitoring status: ' + error.message);
-                this.textContent = 'Stop Monitoring';
+                this.textContent = originalText;
                 this.disabled = false;
             }
         });
     });
+    
+    // Handle sync course buttons
+    const syncButtons = document.querySelectorAll('.sync-course-btn');
+    syncButtons.forEach(button => {
+        button.addEventListener('click', async function(event) {
+            event.preventDefault();
+            
+            const courseCode = this.dataset.courseCode;
+            const section = this.dataset.section;
+            const year = this.dataset.year;
+            const term = this.dataset.term;
+            
+            // Show processing state
+            const originalText = this.textContent;
+            this.textContent = 'Syncing...';
+            this.disabled = true;
+            
+            try {
+                const response = await fetch('/sync_course', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        courseCode: courseCode,
+                        section: section,
+                        year: year,
+                        term: term
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    // Refresh the page to show updated course data
+                    window.location.reload();
+                } else {
+                    alert('Error: ' + data.error);
+                    this.textContent = originalText;
+                    this.disabled = false;
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Failed to sync course: ' + error.message);
+                this.textContent = originalText;
+                this.disabled = false;
+            }
+        });
+    });
+    
+    // Highlight the row if it's specified in the URL
+    const highlightCourse = '{{ highlight_course }}';
+    if (highlightCourse) {
+        const rowElement = document.getElementById(`course-${highlightCourse}`);
+        if (rowElement) {
+            rowElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    }
 });
 </script>
 {% endblock %}

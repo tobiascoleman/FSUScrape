@@ -16,28 +16,173 @@
         }
         #auth-overlay {
             display: none;
+        }
+        
+        #auth-notification {
+            display: none;
             position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0,0,0,0.7);
-            z-index: 1000;
+            bottom: 30px;
+            right: 30px;
+            width: 350px;
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+            z-index: 1050;
+            overflow: hidden;
+            transition: all 0.3s ease;
+            animation: slide-in 0.4s ease;
+        }
+        
+        #auth-notification.show {
+            display: block;
+        }
+        
+        #auth-notification .auth-header {
+            background: #dc3545;
+            color: #fff;
+            padding: 15px 20px;
+            font-weight: 500;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        #auth-notification .auth-header h5 {
+            margin: 0;
+            font-size: 1.1rem;
+        }
+        
+        #auth-notification .auth-body {
+            padding: 20px;
+            text-align: center;
+        }
+        
+        #auth-notification .auth-footer {
+            display: flex;
+            padding: 15px 20px;
+            justify-content: flex-end;
+            border-top: 1px solid #eee;
+        }
+        
+        .auth-progress {
+            display: none;
+        }
+        
+        @keyframes slide-in {
+            0% { transform: translateY(100px); opacity: 0; }
+            100% { transform: translateY(0); opacity: 1; }
+        }
+        
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(220, 53, 69, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); }
+        }
+        
+        /* High priority notification styles */
+        #auth-notification.high-priority {
+            z-index: 9999;
+            animation: highlight-pulse 1.5s ease;
+        }
+        
+        /* Body class for when showing auth */
+        body.showing-auth {
+            position: relative;  /* Ensure proper stacking context */
+        }
+        
+        @keyframes highlight-pulse {
+            0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7); }
+            30% { box-shadow: 0 0 30px 5px rgba(220, 53, 69, 0.7); }
+            100% { box-shadow: 0 4px 20px rgba(0,0,0,0.2); }
+        }
+
+        /* Seat notification styles - separate from auth notifications */
+        #seat-notification {
+            display: none;
+            position: fixed;
+            top: 30px;
+            right: 30px;
+            width: 350px;
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            z-index: 1080; /* Higher than auth notification */
+            overflow: hidden;
+            transition: all 0.3s ease;
+            animation: bounce-in 0.5s ease;
+            border-left: 5px solid #28a745;
+        }
+        
+        #seat-notification.show {
+            display: block;
+        }
+        
+        .seat-header {
+            background: #28a745;
+            color: #fff;
+            padding: 15px 20px;
+            font-weight: 500;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .seat-header h5 {
+            margin: 0;
+            font-size: 1.1rem;
+        }
+        
+        .seat-body {
+            padding: 20px;
+        }
+        
+        .seat-footer {
+            display: flex;
+            padding: 10px 20px;
+            justify-content: space-between;
+            border-top: 1px solid #eee;
+        }
+        
+        @keyframes bounce-in {
+            0% { transform: translateY(-100px); opacity: 0; }
+            50% { transform: translateY(20px); opacity: 1; }
+            75% { transform: translateY(-10px); opacity: 1; }
+            100% { transform: translateY(0); opacity: 1; }
         }
     </style>
 </head>
 <body>
-    <!-- 2FA Authentication Overlay - Available on all pages -->
-    <div id="auth-overlay">
-        <div class="d-flex justify-content-center align-items-center" style="height: 100%;">
-            <div class="text-center text-white">
-                <div class="spinner-border mb-3" role="status">
-                    <span class="visually-hidden">Loading...</span>
-                </div>
-                <h4>Waiting for 2FA Authorization...</h4>
-                <p>Please check your phone and approve the login request.</p>
-                <p>Time remaining: <span id="auth-countdown">60</span> seconds</p>
+    <!-- Remove old 2FA Authentication Overlay -->
+    
+    <!-- New 2FA Authentication Notification with Dismiss Button -->
+    <div id="auth-notification">
+        <div class="auth-header">
+            <h5><i class="bi bi-shield-lock"></i> Authentication Required</h5>
+        </div>
+        <div class="auth-body">
+            <div class="spinner-border text-danger mb-3" role="status">
+                <span class="visually-hidden">Loading...</span>
             </div>
+            <h5>2FA Authentication Required</h5>
+            <p>Please check your phone and approve the login request.</p>
+        </div>
+        <div class="auth-footer">
+            <button id="dismiss-auth-btn" class="btn btn-secondary">Dismiss</button>
+        </div>
+    </div>
+
+    <!-- New Seat Availability Notification -->
+    <div id="seat-notification">
+        <div class="seat-header">
+            <h5><i class="bi bi-bell-fill"></i> Seat Available!</h5>
+            <button type="button" class="btn-close text-white" id="dismiss-seat-btn" aria-label="Close"></button>
+        </div>
+        <div class="seat-body">
+            <p id="seat-message">A seat is now available in one of your monitored courses!</p>
+        </div>
+        <div class="seat-footer">
+            <button id="view-course-btn" class="btn btn-sm btn-primary">View Course</button>
+            <button id="dismiss-seat-notification-btn" class="btn btn-sm btn-outline-secondary">Dismiss</button>
         </div>
     </div>
 
@@ -125,49 +270,37 @@
     <!-- Bootstrap Bundle with Popper -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 
-    <!-- Authentication handling script -->
+    <!-- Authentication handling script with improved immediate display -->
     <script>
-        let authCountdownTimer = null;
+        // Function to show the authentication notification with high urgency option
+        function showAuthOverlayNow() {
+            console.log("Base.html: Showing auth notification IMMEDIATELY");
+            const notification = document.getElementById('auth-notification');
+            document.body.classList.add('showing-auth');
+            notification.classList.add('show', 'high-priority');
+            
+            // Record in shared state
+            window.AUTH_STATE = window.AUTH_STATE || {};
+            window.AUTH_STATE.inProgress = true;
+            window.AUTH_STATE.startTime = Date.now();
+        }
         
-        // Function to show the authentication overlay
+        // Standard show function
         function showAuthOverlay() {
-            document.getElementById('auth-overlay').style.display = 'block';
-            startAuthCountdown();
+            // Use the immediate version for better reliability
+            showAuthOverlayNow();
         }
         
-        // Function to hide the authentication overlay
+        // Function to hide the authentication notification
         function hideAuthOverlay() {
-            document.getElementById('auth-overlay').style.display = 'none';
-            if (authCountdownTimer) {
-                clearInterval(authCountdownTimer);
-                authCountdownTimer = null;
-            }
-        }
-        
-        // Start the authentication countdown
-        function startAuthCountdown() {
-            let timeLeft = 60;
-            const countdownElement = document.getElementById('auth-countdown');
+            console.log("Base.html: Hiding auth notification");
+            const notification = document.getElementById('auth-notification');
+            notification.classList.remove('show', 'high-priority');
+            document.body.classList.remove('showing-auth');
             
-            // Clear any existing timer
-            if (authCountdownTimer) {
-                clearInterval(authCountdownTimer);
-            }
-            
-            // Set initial value
-            countdownElement.textContent = timeLeft;
-            
-            // Start new timer
-            authCountdownTimer = setInterval(function() {
-                timeLeft--;
-                countdownElement.textContent = timeLeft;
-                
-                if (timeLeft <= 0) {
-                    hideAuthOverlay();
-                    alert('2FA authentication timed out. Please try again.');
-                    window.location.reload();
-                }
-            }, 1000);
+            // Update shared state
+            window.AUTH_STATE = window.AUTH_STATE || {};
+            window.AUTH_STATE.inProgress = false;
         }
         
         // Listen for 2FA message from the iframe or server
@@ -175,18 +308,29 @@
             if (event.data === '2fa_approved') {
                 hideAuthOverlay();
             } else if (event.data === '2fa_required') {
-                showAuthOverlay();
+                showAuthOverlayNow();  // Use immediate version
+            }
+        });
+        
+        // Set up dismiss button event listener immediately
+        document.addEventListener('DOMContentLoaded', function() {
+            const dismissButton = document.getElementById('dismiss-auth-btn');
+            if (dismissButton) {
+                dismissButton.addEventListener('click', function() {
+                    hideAuthOverlay();
+                });
             }
         });
         
         // Socket.IO listeners for notifications
         socket.on('notification', function(data) {
             if (data.type === '2fa_required') {
-                showAuthOverlay();
+                // Use immediate display for reliability
+                showAuthOverlayNow();
             } else if (data.type === '2fa_approved') {
                 hideAuthOverlay();
                 // Display a success message if provided
-                if (data.message) {
+                if (data.message && !data.message.includes('(confirming)')) {
                     const alertDiv = document.createElement('div');
                     alertDiv.className = 'alert alert-success alert-dismissible fade show';
                     alertDiv.innerHTML = `
@@ -196,6 +340,153 @@
                     document.querySelector('.container').prepend(alertDiv);
                 }
             }
+        });
+        
+        // Listen for direct messages to show/hide immediately
+        socket.on('direct_message', function(data) {
+            if (data.action === 'hide_auth_overlay') {
+                hideAuthOverlay();
+            } else if (data.action === 'show_auth_overlay_now') {
+                showAuthOverlayNow();
+            }
+        });
+
+        // Browser notification handling
+        let notificationPermissionGranted = false;
+
+        // Function to check for notification permission
+        function checkNotificationPermission() {
+            if (!('Notification' in window)) {
+                console.log('This browser does not support notifications');
+                return;
+            }
+            
+            if (Notification.permission === 'granted') {
+                notificationPermissionGranted = true;
+                console.log('Notification permission already granted');
+            } else if (Notification.permission !== 'denied') {
+                Notification.requestPermission().then(function(permission) {
+                    if (permission === 'granted') {
+                        notificationPermissionGranted = true;
+                        console.log('Notification permission granted');
+                    }
+                });
+            }
+        }
+
+        // Send browser notification
+        function sendBrowserNotification(title, options) {
+            if (!notificationPermissionGranted) {
+                checkNotificationPermission();
+                return;
+            }
+            
+            try {
+                const notification = new Notification(title, options);
+                
+                notification.onclick = function() {
+                    window.focus();
+                    this.close();
+                };
+                
+                return notification;
+            } catch (error) {
+                console.error('Error creating notification:', error);
+            }
+        }
+
+        // Show seat notification popup
+        function showSeatNotification(message, courseDetails) {
+            console.log('Showing seat notification:', message);
+            
+            // Update the notification content
+            const seatMessage = document.getElementById('seat-message');
+            const seatNotification = document.getElementById('seat-notification');
+            
+            if (!seatMessage || !seatNotification) {
+                console.error('Seat notification elements not found');
+                return;
+            }
+            
+            // Store course details for action button
+            seatNotification.dataset.courseCode = courseDetails?.courseCode || '';
+            seatNotification.dataset.section = courseDetails?.section || '';
+            
+            // Update content and show
+            seatMessage.textContent = message;
+            seatNotification.classList.add('show');
+            
+            // Also send browser notification
+            sendBrowserNotification('FSU Course Seat Available!', {
+                body: message,
+                icon: '/static/images/fsu-logo.png',
+                tag: 'seat-notification',
+                vibrate: [100, 50, 100]
+            });
+            
+            // Auto-hide after 60 seconds
+            setTimeout(() => {
+                if (seatNotification.classList.contains('show')) {
+                    seatNotification.classList.remove('show');
+                }
+            }, 60000);
+        }
+
+        // Initialize notification handling
+        document.addEventListener('DOMContentLoaded', function() {
+            // Check notification permission
+            checkNotificationPermission();
+            
+            // Set up seat notification dismiss button
+            const dismissSeatBtn = document.getElementById('dismiss-seat-btn');
+            const dismissSeatNotificationBtn = document.getElementById('dismiss-seat-notification-btn');
+            const viewCourseBtn = document.getElementById('view-course-btn');
+            
+            if (dismissSeatBtn) {
+                dismissSeatBtn.addEventListener('click', function() {
+                    document.getElementById('seat-notification').classList.remove('show');
+                });
+            }
+            
+            if (dismissSeatNotificationBtn) {
+                dismissSeatNotificationBtn.addEventListener('click', function() {
+                    document.getElementById('seat-notification').classList.remove('show');
+                });
+            }
+            
+            if (viewCourseBtn) {
+                viewCourseBtn.addEventListener('click', function() {
+                    const notification = document.getElementById('seat-notification');
+                    const courseCode = notification.dataset.courseCode;
+                    const section = notification.dataset.section;
+                    
+                    // Redirect to dashboard or course page
+                    window.location.href = `/dashboard?highlight=${courseCode}-${section}`;
+                    
+                    // Hide the notification
+                    notification.classList.remove('show');
+                });
+            }
+        });
+
+        // Listen for seat availability notifications via Socket.IO
+        socket.on('seat_notification', function(data) {
+            console.log('Received seat notification:', data);
+            
+            // Extract course details
+            const courseDetails = {
+                courseCode: data.courseCode,
+                section: data.section
+            };
+            
+            // Show the notification
+            showSeatNotification(data.message, courseDetails);
+            
+            // Acknowledge receipt
+            socket.emit('ack_seat_notification', {
+                timestamp: data.timestamp,
+                id: data.id
+            });
         });
     </script>
     
