@@ -22,56 +22,6 @@ COOKIE_EXPIRY = timedelta(minutes=30)
 # Global login lock to ensure only one chromedriver at a time
 GLOBAL_LOGIN_LOCK = threading.Lock()
 
-# Socket.io reference (set by app.py)
-socketio = None
-
-def setup_socketio(socketio_instance):
-    """Set up socketio reference for sending notifications"""
-    global socketio
-    socketio = socketio_instance
-    print("Socket.IO reference set up successfully")
-
-def set_system_busy(busy_status):
-    """Set the system-wide busy status (used for monitoring)"""
-    global SYSTEM_BUSY
-    with SYSTEM_BUSY_LOCK:
-        SYSTEM_BUSY = busy_status
-        print(f"System busy status set to: {SYSTEM_BUSY}")
-
-def is_system_busy():
-    """Check if the system is currently busy with background operations"""
-    with SYSTEM_BUSY_LOCK:
-        return SYSTEM_BUSY
-
-def send_2fa_notification(username, message="2FA authentication required. Please check your phone."):
-    """Send 2FA notification directly via socket.io"""
-    if socketio is None:
-        print(f"[{username}] ❌ Cannot send notification: Socket.IO not initialized")
-        return False
-        
-    try:
-        print(f"[{username}] 📱 SENDING 2FA NOTIFICATION: {message}")
-        
-        # Send via socket.io with high priority
-        socketio.emit('notification', {
-            'message': message,
-            'type': "2fa_required",
-            'priority': True,
-            'timestamp': time.time(),
-            'id': str(time.time())
-        }, namespace='/', room=username)
-        
-        # Also send direct message for redundancy
-        socketio.emit('direct_message', {
-            'action': 'show_auth_overlay_now',
-            'timestamp': time.time()
-        }, namespace='/', room=username)
-        
-        return True
-    except Exception as e:
-        print(f"[{username}] ❌ Error sending notification: {str(e)}")
-        return False
-
 def validate_cookies(cookies, username=None):
     """Test if cookies are still valid"""
     if username:
@@ -235,7 +185,7 @@ def get_valid_cookies(username, password, force_refresh=False):
                                     print(f"{debug_prefix} Using valid cached cookies (after global lock)")
                                     return cache_entry['cookies']
                 
-                # STEP 9: Perform login - this will send 2FA notification internally
+                # STEP 9: Perform login
                 print(f"{debug_prefix} Starting login process")
                 cookies = perform_login(username, password)
                 
@@ -274,13 +224,9 @@ def get_valid_cookies(username, password, force_refresh=False):
 
 def perform_login(username, password, headless=False):
     """
-    Perform the login process. ALWAYS sends a 2FA notification as part of this process.
-    This is the ONLY place that sends 2FA notifications.
+    Perform the login process without socket notifications.
     """
     print(f"Starting ChromeDriver for {username}")
-    
-    # IMMEDIATELY send a 2FA notification - if we're in this function, we always need 2FA
-    send_2fa_notification(username)
     
     chrome_options = Options()
     if headless:
@@ -340,14 +286,6 @@ def perform_login(username, password, headless=False):
         cookies = driver.get_cookies()
         print(f"Got {len(cookies)} cookies from login process for {username}")
         
-        # Notify UI that login was successful via Socket.IO
-        if socketio:
-            socketio.emit('notification', {
-                'message': "Authentication successful",
-                'type': "2fa_approved",
-                'timestamp': time.time()
-            }, namespace='/', room=username)
-        
         return cookies
     
     except Exception as e:
@@ -377,8 +315,7 @@ def clear_cookie_cache(username=None):
             COOKIE_CACHE.clear()
             print("Cleared all cached cookies")
 
-# This function is no longer needed with our simplified approach
-# but we'll keep it as a no-op for backward compatibility
+# This function is no longer needed but we'll keep it as a no-op for backward compatibility
 def clear_auth_state(username=None):
     """Clear any authentication state (no-op in simplified version)"""
     pass  # We no longer track auth state separately

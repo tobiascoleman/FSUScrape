@@ -1,5 +1,4 @@
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
-from flask_socketio import SocketIO
 from werkzeug.security import generate_password_hash, check_password_hash
 import sqlite3
 import init_db
@@ -10,53 +9,48 @@ import time
 from schedule_generator import generate_optimal_schedules
 import auth_manager
 from auth_manager import clear_auth_state
+import requests
+from apscheduler.schedulers.background import BackgroundScheduler
+import atexit
 
 # Initialize Flask app
 app = Flask(__name__)
 app.secret_key = 'GONOLES!'
 
-# Initialize SocketIO with specific configuration
-socketio = SocketIO(app, async_mode='threading', cors_allowed_origins="*", logger=True, engineio_logger=True)
+# Use a simpler scheduler without Flask-APScheduler
+# This ensures the scheduler runs in the same process/thread context
+scheduler = BackgroundScheduler()
 
-# Set up socketio for auth_manager to use directly
-auth_manager.setup_socketio(socketio)
+def init_scheduler_job():
+    """Add the monitoring job to the scheduler"""
+    if not scheduler.get_job('check_monitored_courses'):
+        scheduler.add_job(
+            id='check_monitored_courses',
+            func=scraper.check_monitored_courses,
+            trigger='interval',
+            seconds=30,
+            max_instances=1,  # Prevent overlapping runs
+            misfire_grace_time=10  # Allow job to be late by 10 seconds
+        )
+        print("Added check_monitored_courses job to scheduler (runs every 30 seconds)")
+
+# Use before_first_request as a fallback for older Flask versions
+@app.before_first_request
+def init_scheduler():
+    """Initialize scheduler after first request (for older Flask versions)"""
+    if not scheduler.running:
+        init_scheduler_job()
+        scheduler.start()
+        print("Scheduler started from before_first_request handler")
+
+# Register a function to shut down the scheduler when the app exits
+atexit.register(lambda: scheduler.shutdown(wait=False))
 
 def get_db_connection():
     """Create a database connection with row factory enabled"""
     conn = sqlite3.connect('fsu_courses.db')
     conn.row_factory = sqlite3.Row
     return conn
-
-def send_notification(username, message, notification_type="info", high_priority=False):
-    """Send seat availability notification via WebSocket"""
-    try:
-        print(f"Sending notification to {username}: {message} (type: {notification_type})")
-        socketio.emit('notification', {
-            'message': message,
-            'type': notification_type,
-            'priority': high_priority,
-            'timestamp': time.time()
-        }, namespace='/', room=username)
-        return True
-    except Exception as e:
-        print(f"Error sending notification: {e}")
-        return False
-
-# Socket.IO event handlers
-@socketio.on('connect')
-def handle_connect():
-    print(f"Socket connected: {request.sid}")
-
-@socketio.on('disconnect')
-def handle_disconnect():
-    print(f"Socket disconnected: {request.sid}")
-
-@socketio.on('ack_notification')
-def handle_notification_acknowledgment(data):
-    """Handle acknowledgment of notifications"""
-    username = session.get('username')
-    if username:
-        print(f"Received notification acknowledgment from {username}")
 
 # Basic route handlers
 @app.route('/')
@@ -738,12 +732,10 @@ if __name__ == '__main__':
     # Initialize database
     init_db.init_db()
     
-    # Start monitoring thread
-    monitor_thread = threading.Thread(
-        target=scraper.check_monitored_courses,
-        daemon=True
-    )
-    monitor_thread.start()
+    # Add job and start scheduler
+    init_scheduler_job()
+    scheduler.start()
+    print("Scheduler started with check_monitored_courses task running every 30 seconds")
     
-    # Run with threading mode
-    socketio.run(app, debug=True, allow_unsafe_werkzeug=True)
+    # Run Flask app
+    app.run(debug=True, use_reloader=False)  # Disable reloader to prevent duplicate schedulers

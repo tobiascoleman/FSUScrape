@@ -25,34 +25,6 @@ function convertTo12HourFormat(time24) {
     }
 }
 
-// Handle notification permissions
-let notificationPermission = false;
-
-function checkNotificationPermission() {
-    if (Notification.permission === 'granted') {
-        notificationPermission = true;
-        return true;
-    }
-    return false;
-}
-
-async function requestNotificationPermission() {
-    if (!("Notification" in window)) {
-        alert("This browser does not support notifications");
-        return false;
-    }
-
-    try {
-        const permission = await Notification.requestPermission();
-        notificationPermission = permission === "granted";
-        console.log(`Notification permission ${notificationPermission ? 'granted' : 'denied'}`);
-        return notificationPermission;
-    } catch (err) {
-        console.error('Error requesting notification permission:', err);
-        return false;
-    }
-}
-
 // Send monitor toggle request to server
 function sendToggleMonitorRequest(buttonElement, courseCode, section, isCurrentlyMonitoring, year, term) {
     // Debug info
@@ -172,9 +144,6 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
         
-        // Check if notification permission is already granted
-        checkNotificationPermission();
-        
         // Set up ALL toggle monitoring buttons
         const toggleButtons = document.querySelectorAll('.toggle-monitor-btn');
         console.log(`Found ${toggleButtons.length} toggle buttons on the page`);
@@ -223,21 +192,9 @@ document.addEventListener('DOMContentLoaded', function() {
                         alert('Error: Year and term are required to monitor a course');
                         return;
                     }
-                    
-                    // Request notification permission if not already granted
-                    if (!notificationPermission) {
-                        requestNotificationPermission().then(granted => {
-                            if (granted) {
-                                sendToggleMonitorRequest(this, courseCode, section, isMonitoring, year, term);
-                            } else {
-                                alert('You must allow notifications to monitor courses');
-                            }
-                        });
-                    } else {
-                        sendToggleMonitorRequest(this, courseCode, section, isMonitoring, year, term);
-                    }
+                    sendToggleMonitorRequest(this, courseCode, section, isMonitoring, year, term);
                 } else {
-                    // For stopping monitoring, we don't need notification permission
+                    // For stopping monitoring
                     sendToggleMonitorRequest(this, courseCode, section, isMonitoring, year, term);
                 }
             });

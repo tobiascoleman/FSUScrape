@@ -284,127 +284,137 @@ def process_courses(data, year, term):
 
 def check_monitored_courses():
     """
-    Periodically check monitored courses for seat availability.
-    
-    This function runs in a separate thread and continuously checks if seats
-    have become available in any monitored courses.
+    Task to check monitored courses for seat availability.
+    This function runs periodically to check if seats have become 
+    available in any monitored courses.
     """
-    # Import here to avoid circular imports
-    from app import send_notification
+    # Log with timestamp for easier debugging
+    start_time = time.time()
+    print(f"[SCHEDULER] Running monitored courses check at {time.strftime('%H:%M:%S', time.localtime(start_time))}")
     
-    logger.info("Starting monitored courses checker thread")
-    
-    while True:
-        try:
-            # Get all users with monitored courses
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            
-            cursor.execute("""
-                SELECT DISTINCT mc.username, u.fsu_password as encrypted_password
-                FROM monitored_courses mc
-                JOIN users u ON mc.username = u.username
-            """)
-            users = cursor.fetchall()
-            
-            for username, encrypted_password in users:
-                try:
-                    # Decrypt password
-                    password = cipher.decrypt(encrypted_password)
-                    
-                    # Get this user's monitored courses
-                    cursor.execute("""
-                        SELECT mc.courseCode, mc.section, mc.year, mc.term
-                        FROM monitored_courses mc
-                        WHERE mc.username = ?
-                        ORDER BY mc.courseCode, mc.section
-                    """, (username,))
-                    user_courses = cursor.fetchall()
-                    
-                    logger.info(f"Checking {len(user_courses)} courses for user {username}")
-                    
-                    # Get cookies once for this user
-                    try:
-                        cookies = get_valid_cookies(username, password)
-                        if not cookies:
-                            logger.warning(f"Failed to get valid cookies for {username}")
-                            continue
-                            
-                        # Check each course
-                        for course_code, section, year, term in user_courses:
-                            try:
-                                # Extract subject and course number
-                                subject = ''.join(filter(str.isalpha, course_code))
-                                course_num = ''.join(filter(str.isdigit, course_code))
-                                
-                                # Make API request
-                                api_url = f'{FSU_API_BASE}/terms/{year}%20{term}/subjects/{subject}/courses/{course_num}/regblocks'
-                                headers = {
-                                    "Cookie": "; ".join(f"{cookie['name']}={cookie['value']}" for cookie in cookies)
-                                }
-                                
-                                response = requests.get(api_url, headers=headers, timeout=10)
-                                response.raise_for_status()
-                                data = response.json()
-                                
-                                # Check for open seats
-                                if data and 'sections' in data:
-                                    for course_section in data['sections']:
-                                        if course_section['sectionNumber'] == section:
-                                            open_seats = course_section.get('openSeats', 0)
-                                            if open_seats > 0:
-                                                # Seats available! Send notification
-                                                message = (f"Seat available in {course_code} "
-                                                         f"section {section}! "
-                                                         f"Available seats: {open_seats}")
-                                                logger.info(f"SEATS AVAILABLE: {message}")
-                                                send_notification(username, message)
-                                                
-                                                # Update course in database
-                                                update_course_availability(course_code, section, 
-                                                                          course_section.get('seatsCapacity', 0), 
-                                                                          open_seats)
-                                            break
-                                    
-                            except Exception as course_error:
-                                logger.error(f"Error checking {course_code}-{section}: {course_error}")
-                                continue
-                                
-                    except Exception as auth_error:
-                        logger.error(f"Authentication error for {username}: {auth_error}")
-                        clear_cookie_cache(username)
-                    
-                except Exception as user_error:
-                    logger.error(f"Error processing user {username}: {user_error}")
-                    
-            conn.close()
-            
-        except Exception as e:
-            logger.error(f"Error in course monitoring: {e}")
-            
-        # Wait before next check
-        time.sleep(30)
-
-def update_course_availability(course_code, section, capacity, available):
-    """Update course availability in the database."""
     try:
+        # Get all users with monitored courses
         conn = get_db_connection()
         cursor = conn.cursor()
         
         cursor.execute("""
-            UPDATE courses 
-            SET seatsCapacity = ?, seatsAvailable = ?
-            WHERE courseCode = ? AND section = ?
-        """, (capacity, available, course_code, section))
-        
-        conn.commit()
+            SELECT DISTINCT mc.username, u.fsu_password as encrypted_password
+            FROM monitored_courses mc
+            JOIN users u ON mc.username = u.username
+        """)
+        users = cursor.fetchall()
         conn.close()
         
-        logger.info(f"Updated availability for {course_code}-{section}: {available}/{capacity}")
-        return True
+        user_count = len(users)
+        if user_count == 0:
+            print("[SCHEDULER] No users with monitored courses found")
+            return
+            
+        print(f"[SCHEDULER] Found {user_count} users with monitored courses")
+        
+        # Process users one by one
+        for username, encrypted_password in users:
+            try:
+                # Decrypt password
+                password = cipher.decrypt(encrypted_password)
+                
+                # Get this user's monitored courses
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT mc.courseCode, mc.section, mc.year, mc.term
+                    FROM monitored_courses mc
+                    WHERE mc.username = ?
+                    ORDER BY mc.courseCode, mc.section
+                """, (username,))
+                user_courses = cursor.fetchall()
+                conn.close()
+                
+                course_count = len(user_courses)
+                print(f"[SCHEDULER] Checking {course_count} courses for user {username}")
+                
+                if course_count == 0:
+                    continue
+                    
+                # Get cookies once for this user - using force_refresh=False to reuse existing cookies
+                # This is the key part to ensure we're using the shared cookie cache
+                cookies = None
+                try:
+                    print(f"[SCHEDULER] Getting cached cookies for {username}")
+                    cookies = get_valid_cookies(username, password, force_refresh=False)
+                    
+                    # If we couldn't get valid cookies, try one refresh
+                    if not cookies:
+                        print(f"[SCHEDULER] No valid cached cookies, attempting refresh for {username}")
+                        cookies = get_valid_cookies(username, password, force_refresh=True)
+                    
+                    if not cookies:
+                        print(f"[SCHEDULER] Failed to get valid cookies for {username} after refresh")
+                        continue
+                    
+                    print(f"[SCHEDULER] Successfully obtained cookies for {username}")
+                        
+                    # Check each course
+                    for course_code, section, year, term in user_courses:
+                        try:
+                            # Extract subject and course number
+                            subject = ''.join(filter(str.isalpha, course_code))
+                            course_num = ''.join(filter(str.isdigit, course_code))
+                            
+                            # Make API request
+                            api_url = f'https://fsu.collegescheduler.com/api/terms/{year}%20{term}/subjects/{subject}/courses/{course_num}/regblocks'
+                            headers = {
+                                "Cookie": "; ".join(f"{cookie['name']}={cookie['value']}" for cookie in cookies),
+                                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                            }
+                            
+                            response = requests.get(api_url, headers=headers, timeout=10)
+                            response.raise_for_status()
+                            data = response.json()
+                            
+                            # Check for open seats
+                            if data and 'sections' in data:
+                                for course_section in data['sections']:
+                                    if course_section['sectionNumber'] == section:
+                                        open_seats = course_section.get('openSeats', 0)
+                                        total_seats = course_section.get('seatsCapacity', 0)
+                                        print(f"[SCHEDULER] Course {course_code}-{section}: {open_seats}/{total_seats} seats available")
+                                        
+                                        if open_seats > 0:
+                                            # Seats available! Update database
+                                            print(f"[SCHEDULER] SEATS AVAILABLE: {course_code}-{section} ({open_seats} seats)")
+                                            
+                                            # Update course in database
+                                            conn = get_db_connection()
+                                            cursor = conn.cursor()
+                                            cursor.execute("""
+                                                UPDATE courses 
+                                                SET seatsCapacity = ?, seatsAvailable = ?
+                                                WHERE courseCode = ? AND section = ?
+                                            """, (course_section.get('seatsCapacity', 0), open_seats, 
+                                                  course_code, section))
+                                            conn.commit()
+                                            conn.close()
+                                        break
+                                
+                        except Exception as course_error:
+                            print(f"[SCHEDULER] Error checking {course_code}-{section}: {course_error}")
+                            continue
+                            
+                except Exception as auth_error:
+                    print(f"[SCHEDULER] Authentication error for {username}: {auth_error}")
+                    # Only clear cache if there was an authentication error
+                    clear_cookie_cache(username)
+                
+            except Exception as user_error:
+                print(f"[SCHEDULER] Error processing user {username}: {user_error}")
+                
     except Exception as e:
-        logger.error(f"Failed to update availability for {course_code}-{section}: {e}")
-        return False
+        print(f"[SCHEDULER] Error in monitoring task: {e}")
+        
+    end_time = time.time()
+    duration = end_time - start_time
+    print(f"[SCHEDULER] Completed monitored courses check at {time.strftime('%H:%M:%S', time.localtime(end_time))} (took {duration:.2f}s)")
 
 # Main execution block
 if __name__ == "__main__":
@@ -428,17 +438,3 @@ if __name__ == "__main__":
         process_courses(data, year, term)
     else:
         print("No data fetched")
-        
-    # Manual test of monitoring
-    start_monitor = input("Start monitoring thread? (y/n): ")
-    if start_monitor.lower() == 'y':
-        monitor_thread = threading.Thread(target=check_monitored_courses, daemon=True)
-        monitor_thread.start()
-        
-        try:
-            print("Press Ctrl+C to exit...")
-            # Keep main thread alive while daemon thread runs
-            while True:
-                time.sleep(1)
-        except KeyboardInterrupt:
-            print("\nExiting...")
