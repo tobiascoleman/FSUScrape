@@ -395,6 +395,23 @@ def check_monitored_courses():
                                                   course_code, section))
                                             conn.commit()
                                             conn.close()
+
+                                            # Import here to avoid circular imports
+                                            import notifications
+                                            
+                                            # Send notification to the user
+                                            notification_result = notifications.send_course_notification(
+                                                username, 
+                                                course_code, 
+                                                section, 
+                                                open_seats, 
+                                                total_seats
+                                            )
+                                            
+                                            if notification_result:
+                                                print(f"[SCHEDULER] Successfully sent notification to {username} for {course_code}-{section}")
+                                            else:
+                                                print(f"[SCHEDULER] Failed to send notification to {username} for {course_code}-{section}")
                                         break
                                 
                         except Exception as course_error:

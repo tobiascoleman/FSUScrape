@@ -6,6 +6,8 @@
     <title>FSU Course Scraper</title>
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     <!-- Optional custom CSS -->
     <style>
         body {
@@ -77,8 +79,141 @@
     
     <!-- Time utilities -->
     <script src="{{ url_for('static', filename='js/timeUtils.js') }}"></script>
+
+    <!-- Simple sound system (no external files needed) -->
+    <script src="{{ url_for('static', filename='js/simple-sounds.js') }}"></script>
+    
+    <!-- Toast notifications -->
+    <script src="{{ url_for('static', filename='js/toast-notifications.js') }}"></script>
+    
+    <!-- SocketIO JS -->
+    <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
+    
+    <!-- Socket Manager -->
+    <script src="{{ url_for('static', filename='js/socket-manager.js') }}"></script>
     
     <!-- Custom authentication handling -->
     <script src="{{ url_for('static', filename='js/auth.js') }}"></script>
+    
+    <!-- Initialize components if logged in -->
+    {% if session.username %}
+    <script>
+        // Initialize when DOM is loaded
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM loaded, initializing systems');
+            
+            // Initialize the toast notification system
+            if (window.ToastNotifications) {
+                ToastNotifications.init();
+            }
+            
+            // Initialize sound system (on user interaction)
+            document.body.addEventListener('click', function() {
+                if (window.SimpleSounds) {
+                    window.SimpleSounds.init();
+                }
+            }, { once: true });
+        });
+        
+        // Process incoming notifications
+        window.processNotification = function(data) {
+            // Play sound based on notification type
+            if (window.SimpleSounds) {
+                if (data.type === 'auth') {
+                    SimpleSounds.alert();
+                } else if (data.type === 'course_availability') {
+                    SimpleSounds.success();
+                } else {
+                    SimpleSounds.notification();
+                }
+            }
+            
+            // Handle different notification types
+            if (data.type === 'auth') {
+                // Authentication notification
+                ToastNotifications.warning(
+                    'Authentication Required', 
+                    data.message,
+                    { 
+                        duration: data.requires_action ? 0 : 10000, // Don't auto-dismiss if action required
+                        sound: true
+                    }
+                );
+                
+                // Also show browser notification
+                if (Notification.permission === "granted") {
+                    const notification = new Notification("FSU Authentication", {
+                        body: data.message,
+                        icon: "/static/favicon.ico",
+                        requireInteraction: data.requires_action
+                    });
+                }
+            } 
+            else if (data.type === 'course_availability') {
+                // Course notification with link to dashboard
+                const toast = ToastNotifications.success(
+                    'Course Seats Available!', 
+                    data.message,
+                    { 
+                        duration: 0, // Don't auto-dismiss
+                        sound: true,
+                        onClick: function() {
+                            window.location.href = `/dashboard?highlight=${data.course_code}-${data.section}`;
+                        }
+                    }
+                );
+                
+                // Add "Go to Course" button
+                if (toast && toast.querySelector) {
+                    const btnContainer = document.createElement('div');
+                    btnContainer.style.marginTop = '10px';
+                    btnContainer.innerHTML = `
+                        <button class="btn btn-sm btn-light">Go to Course</button>
+                    `;
+                    const msgElement = toast.querySelector('.toast-message');
+                    if (msgElement) {
+                        msgElement.appendChild(btnContainer);
+                    }
+                }
+                
+                // Browser notification
+                if (Notification.permission === "granted") {
+                    const notification = new Notification("Course Seats Available!", {
+                        body: data.message,
+                        icon: "/static/favicon.ico",
+                        requireInteraction: true
+                    });
+                    
+                    notification.onclick = function() {
+                        window.focus();
+                        window.location.href = `/dashboard?highlight=${data.course_code}-${data.section}`;
+                        this.close();
+                    };
+                }
+            }
+            else {
+                // Generic notification
+                ToastNotifications.info(
+                    'Notification', 
+                    data.message || 'Unknown notification received',
+                    { sound: true }
+                );
+            }
+        };
+        
+        // When everything is loaded, connect socket
+        window.addEventListener('load', function() {
+            // Initialize Socket Manager
+            SocketManager.init('{{ session.username }}');
+            
+            // Request browser notification permission if needed
+            if (Notification.permission !== "granted") {
+                Notification.requestPermission().then(function(permission) {
+                    console.log('Notification permission:', permission);
+                });
+            }
+        });
+    </script>
+    {% endif %}
 </body>
 </html>

@@ -1,5 +1,14 @@
+"""
+Schedule Generator for FSU Course Scraper
+Relies on SQL for efficient filtering and course selection
+"""
 import sqlite3
 import itertools
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger('schedule_generator')
 
 def generate_optimal_schedules(required_courses, optional_courses, earliest_time, latest_time, 
                               preferred_days, max_courses, year, term, prioritize_gaps, username):
@@ -25,65 +34,57 @@ def generate_optimal_schedules(required_courses, optional_courses, earliest_time
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
     
-    # Convert time constraints to integers for proper comparison
-    earliest_time_int = int(earliest_time)
-    latest_time_int = int(latest_time)
-    
-    print(f"Finding courses between {earliest_time} ({earliest_time_int}) and {latest_time} ({latest_time_int})")
-    
     # Remove duplicates and get all candidate courses
     all_courses = list(set(required_courses + optional_courses))
     
-    # Get all sections of the candidate courses that meet time and day constraints
+    # Build a complex SQL query to filter courses directly in the database
+    query = """
+    SELECT c.*, 
+           GROUP_CONCAT(i.instructorName) as instructors
+    FROM courses c
+    LEFT JOIN course_instructors ci ON c.id = ci.course_id
+    LEFT JOIN instructors i ON ci.instructor_id = i.id
+    WHERE c.courseCode = ?
+      AND (c.year = ?)
+      AND (c.term = ?)
+      AND c.startTime >= ?
+      AND c.endTime <= ?
+      AND c.days IS NOT NULL
+    """
+    
+    # Handle day preferences in SQL if possible
+    day_filter = []
+    for day in preferred_days:
+        day_filter.append(f"c.days LIKE '%{day}%'")
+    
+    if day_filter:
+        query += " AND (" + " OR ".join(day_filter) + ")"
+    
+    query += " GROUP BY c.id ORDER BY c.seatsAvailable DESC"
+    
+    # Get sections for each course using SQL filtering
     course_sections = {}
     for course_code in all_courses:
-        # First, get all sections of this course
-        cursor.execute("""
-            SELECT c.*, 
-                   GROUP_CONCAT(i.instructorName) as instructors
-            FROM courses c
-            LEFT JOIN course_instructors ci ON c.id = ci.course_id
-            LEFT JOIN instructors i ON ci.instructor_id = i.id
-            WHERE c.courseCode = ?
-              AND (c.year = ? OR c.year IS NULL)
-              AND (c.term = ? OR c.term IS NULL)
-            GROUP BY c.id
-            ORDER BY c.seatsAvailable DESC
-        """, (course_code, year, term))
-        
+        logger.info(f"Querying sections for {course_code}")
+        cursor.execute(query, (course_code, year, term, earliest_time, latest_time))
         sections = cursor.fetchall()
-        valid_sections = []
         
-        # Process each section and manually filter by time constraints
-        for section in sections:
-            # Skip sections with no timing info
-            if not section['startTime'] or not section['endTime'] or not section['days']:
-                continue
-                
-            # Convert times to integers for comparison
-            start_time = int(section['startTime'])
-            end_time = int(section['endTime'])
-            
-            # Check time constraints
-            if start_time < earliest_time_int:
-                print(f"Skipping {course_code} section {section['section']} - starts too early: {section['startTime']}")
-                continue
-                
-            if end_time > latest_time_int:
-                print(f"Skipping {course_code} section {section['section']} - ends too late: {section['endTime']}")
-                continue
-                
-            # Check day constraints
-            if not any(day in preferred_days for day in section['days']):
-                print(f"Skipping {course_code} section {section['section']} - no classes on preferred days")
-                continue
-                
-            # This section meets all constraints
-            valid_sections.append(dict(section))
-            
-        if valid_sections:
-            course_sections[course_code] = valid_sections
-            print(f"Found {len(valid_sections)} valid sections for {course_code}")
+        # Convert sections to dictionaries for easier manipulation
+        valid_sections = [dict(section) for section in sections]
+        
+        # Final day filtering in Python (for complex cases)
+        filtered_sections = []
+        for section in valid_sections:
+            # Ensure there's at least one common day between section days and preferred days
+            section_days = section['days'] or ""
+            if any(day in preferred_days for day in section_days):
+                filtered_sections.append(section)
+        
+        if filtered_sections:
+            course_sections[course_code] = filtered_sections
+            logger.info(f"Found {len(filtered_sections)} valid sections for {course_code}")
+        else:
+            logger.warning(f"No valid sections found for {course_code}")
     
     # Check if we have sections for all required courses
     missing_required = [course for course in required_courses if course not in course_sections]
@@ -187,33 +188,37 @@ def has_time_conflict(sections):
                 start2 = time_to_minutes(section2['startTime'])
                 end2 = time_to_minutes(section2['endTime'])
                 
-                # If end time is before start time (likely crossing midnight), 
-                # adjust for 24-hour comparison
-                if end1 < start1:
-                    end1 += 24 * 60  # Add a day in minutes
-                if end2 < start2:
-                    end2 += 24 * 60
-                
                 # Check for time overlap
                 if max(start1, start2) < min(end1, end2):
-                    print(f"Time conflict detected between sections:")
-                    print(f"  Section 1: {section1['courseCode']} {section1['section']} at {section1['startTime']}-{section1['endTime']} on {section1['days']}")
-                    print(f"  Section 2: {section2['courseCode']} {section2['section']} at {section2['startTime']}-{section2['endTime']} on {section2['days']}")
+                    logger.debug(f"Time conflict detected between sections:")
+                    logger.debug(f"  Section 1: {section1['courseCode']} {section1['section']} at {section1['startTime']}-{section1['endTime']} on {section1['days']}")
+                    logger.debug(f"  Section 2: {section2['courseCode']} {section2['section']} at {section2['startTime']}-{section2['endTime']} on {section2['days']}")
                     return True
             except (ValueError, TypeError) as e:
                 # If time conversion fails, be cautious and assume there might be a conflict
-                print(f"Error comparing times: {e}")
+                logger.warning(f"Error comparing times: {e}")
                 return True
                 
     return False
 
 def time_to_minutes(time_str):
-    """Convert time in 'HHMM' format to minutes since midnight."""
-    if not time_str or len(time_str) < 4:
-        raise ValueError(f"Invalid time format: {time_str}")
+    """Convert time in 'HHMM' or 'HMM' format to minutes since midnight."""
+    if not time_str:
+        raise ValueError(f"Empty time string")
+        
+    # Convert to string if it's not already
+    time_str = str(time_str).strip()
     
-    hours = int(time_str[:2])
-    minutes = int(time_str[2:])
+    # Handle 3-digit format (e.g., "800" for 8:00 AM)
+    if len(time_str) == 3:
+        hours = int(time_str[0])
+        minutes = int(time_str[1:])
+    # Handle 4-digit format (e.g., "0800" or "1430")
+    elif len(time_str) == 4:
+        hours = int(time_str[:2])
+        minutes = int(time_str[2:])
+    else:
+        raise ValueError(f"Invalid time format: {time_str}")
     
     return hours * 60 + minutes
 
@@ -258,8 +263,8 @@ def calculate_schedule_score(sections, prioritize_gaps):
                 
                 # Convert times to integers safely
                 try:
-                    start_time = int(section['startTime'])
-                    end_time = int(section['endTime'])
+                    start_time = time_to_minutes(section['startTime'])
+                    end_time = time_to_minutes(section['endTime'])
                 except (ValueError, TypeError):
                     continue
                 
@@ -285,15 +290,7 @@ def calculate_schedule_score(sections, prioritize_gaps):
                     for i in range(len(times) - 1):
                         gap = times[i+1]['start'] - times[i]['end']
                         if gap > 0:
-                            # Calculate hours and minutes more reliably
-                            # For times in HHMM format: 
-                            # - The hour difference is the first two digits of the gap
-                            # - The minute difference is the last two digits
-                            gap_str = str(gap).zfill(4)  # Ensure 4 digits with leading zeros
-                            gap_hours = int(gap_str[:-2]) if len(gap_str) > 2 else 0
-                            gap_minutes = int(gap_str[-2:])
-                            
-                            total_gap_minutes += gap_hours * 60 + gap_minutes
+                            total_gap_minutes += gap
             
             # Penalize for gaps (more than 15 minutes)
             if total_gap_minutes > 15:
@@ -301,6 +298,38 @@ def calculate_schedule_score(sections, prioritize_gaps):
                 
         except Exception as e:
             # Log the error but don't fail - just don't apply gap penalties
-            print(f"Error calculating gaps: {str(e)}")
+            logger.error(f"Error calculating gaps: {str(e)}")
     
     return score
+
+# For testing
+if __name__ == "__main__":
+    import sys
+    
+    # Simple CLI for testing
+    print("Schedule Generator Test")
+    required = input("Required courses (comma-separated): ").split(",")
+    optional = input("Optional courses (comma-separated): ").split(",")
+    start_time = input("Earliest time (HHMM format, e.g. 0800): ")
+    end_time = input("Latest time (HHMM format, e.g. 1700): ")
+    days = input("Preferred days (e.g. MWF): ")
+    max_count = int(input("Maximum number of courses: "))
+    year = input("Year (e.g. 2025): ")
+    term = input("Term (e.g. Fall): ")
+    
+    required = [c.strip() for c in required if c.strip()]
+    optional = [c.strip() for c in optional if c.strip()]
+    
+    try:
+        schedules = generate_optimal_schedules(
+            required, optional, start_time, end_time, 
+            days, max_count, year, term, True, "test_user"
+        )
+        
+        print(f"Generated {len(schedules)} schedules:")
+        for i, schedule in enumerate(schedules[:5]):
+            print(f"\nSchedule {i+1} (Score: {schedule['score']:.2f}):")
+            for course in schedule['courses']:
+                print(f"  {course['courseCode']}-{course['section']} {course['days']} {course['startTime']}-{course['endTime']} ({course.get('instructors', 'No instructor')})")
+    except Exception as e:
+        print(f"Error: {e}")

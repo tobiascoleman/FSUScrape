@@ -412,16 +412,36 @@ function generateDetailedCalendar(courses) {
             }
             
             // Calculate start and end time indices
-            const startHour = parseInt(course.startTime.substring(0, 2));
-            const startMin = parseInt(course.startTime.substring(2));
-            const endHour = parseInt(course.endTime.substring(0, 2));
-            const endMin = parseInt(course.endTime.substring(2));
+            let startHour, startMin, endHour, endMin;
+            
+            // Handle 3-digit format for start time
+            if (course.startTime.length === 3) {
+                startHour = parseInt(course.startTime.substring(0, 1));
+                startMin = parseInt(course.startTime.substring(1));
+            } else {
+                startHour = parseInt(course.startTime.substring(0, 2));
+                startMin = parseInt(course.startTime.substring(2));
+            }
+            
+            // Handle 3-digit format for end time
+            if (course.endTime.length === 3) {
+                endHour = parseInt(course.endTime.substring(0, 1));
+                endMin = parseInt(course.endTime.substring(1));
+            } else {
+                endHour = parseInt(course.endTime.substring(0, 2));
+                endMin = parseInt(course.endTime.substring(2));
+            }
             
             const startIndex = (startHour - 7) * 2 + (startMin >= 30 ? 1 : 0);
             const endIndex = (endHour - 7) * 2 + (endMin > 0 ? 1 : 0);
             
+            console.log(`Course ${course.courseCode} on ${day}: Time ${course.startTime}-${course.endTime} => Calendar indices ${startIndex}-${endIndex}`);
+            
             // Skip if course is outside our displayed time range
-            if (startIndex < 0 || startIndex >= rows.length) continue;
+            if (startIndex < 0 || startIndex >= rows.length) {
+                console.warn(`Course ${course.courseCode} time ${course.startTime} (index ${startIndex}) is outside calendar range`);
+                continue;
+            }
             
             // Calculate duration in 30-min blocks
             const duration = Math.max(1, endIndex - startIndex);
@@ -609,10 +629,62 @@ function has_time_conflict(courses) {
 
 // Helper function to convert time (HHMM format) to minutes
 function timeToMinutes(time) {
-    if (!time || time.length < 4) return 0;
-    const hours = parseInt(time.substring(0, 2));
-    const minutes = parseInt(time.substring(2));
-    return hours * 60 + minutes;
+    if (!time) return 0;
+    
+    // Convert to string and ensure it's trimmed
+    time = String(time).trim();
+    
+    // Handle 3-digit format (e.g., "945" for 9:45 AM)
+    if (time.length === 3) {
+        const hours = parseInt(time.substring(0, 1));
+        const minutes = parseInt(time.substring(1));
+        return hours * 60 + minutes;
+    }
+    // Handle 4-digit format (e.g., "0945" or "1430")
+    else if (time.length === 4) {
+        const hours = parseInt(time.substring(0, 2));
+        const minutes = parseInt(time.substring(2));
+        return hours * 60 + minutes;
+    }
+    
+    console.warn(`Invalid time format: ${time}`);
+    return 0;
+}
+
+// Format time string for display
+function formatTime(timeStr) {
+    if (!timeStr) return 'TBA';
+    
+    // Convert to string and ensure it's trimmed
+    timeStr = String(timeStr).trim();
+    
+    let hours, minutes;
+    
+    // Handle 3-digit format
+    if (timeStr.length === 3) {
+        hours = parseInt(timeStr.substring(0, 1));
+        minutes = timeStr.substring(1);
+    }
+    // Handle 4-digit format
+    else if (timeStr.length === 4) {
+        hours = parseInt(timeStr.substring(0, 2));
+        minutes = timeStr.substring(2);
+    }
+    else {
+        return timeStr; // Return as is if invalid
+    }
+    
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12;
+    hours = hours ? hours : 12; // Convert 0 to 12
+    
+    return `${hours}:${minutes} ${ampm}`;
+}
+
+// Format time range for display
+function formatTimeRange(startTime, endTime) {
+    if (!startTime || !endTime) return 'TBA';
+    return `${formatTime(startTime)} - ${formatTime(endTime)}`;
 }
 
 // Parse days string to standardized format

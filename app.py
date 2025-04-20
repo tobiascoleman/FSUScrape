@@ -12,10 +12,16 @@ from auth_manager import clear_auth_state
 import requests
 from apscheduler.schedulers.background import BackgroundScheduler
 import atexit
+from flask_socketio import SocketIO
+import notifications
 
 # Initialize Flask app
 app = Flask(__name__)
 app.secret_key = 'GONOLES!'
+
+# Initialize SocketIO with async mode
+socketio = notifications.init_socketio(app)
+notifications.register_socket_events(socketio)
 
 # Use a simpler scheduler without Flask-APScheduler
 # This ensures the scheduler runs in the same process/thread context
@@ -28,7 +34,7 @@ def init_scheduler_job():
             id='check_monitored_courses',
             func=scraper.check_monitored_courses,
             trigger='interval',
-            seconds=30,
+            seconds=60,
             max_instances=1,  # Prevent overlapping runs
             misfire_grace_time=10  # Allow job to be late by 10 seconds
         )
@@ -737,5 +743,6 @@ if __name__ == '__main__':
     scheduler.start()
     print("Scheduler started with check_monitored_courses task running every 30 seconds")
     
-    # Run Flask app
-    app.run(debug=True, use_reloader=False)  # Disable reloader to prevent duplicate schedulers
+    # Run with SocketIO instead of Flask's built-in server
+    # Use allow_unsafe_werkzeug=True to avoid threading issues in development
+    socketio.run(app, debug=True, use_reloader=False, allow_unsafe_werkzeug=True)

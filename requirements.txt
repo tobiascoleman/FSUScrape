@@ -1,8 +1,30 @@
-flask==2.2.3
-flask-socketio==5.3.2
-python-socketio==5.7.2
-python-engineio==4.3.4
-werkzeug==2.2.3
-cryptography==39.0.1
-requests==2.28.2
-selenium==4.8.2
+# Flask and web components
+flask==2.0.1
+werkzeug==2.0.1
+flask-socketio==5.1.1
+python-socketio==5.5.0
+python-engineio==4.2.1
+flask-apscheduler==1.12.4
+
+# Background processing
+apscheduler==3.7.0
+
+# HTTP requests
+requests==2.26.0
+
+# Encryption
+pycryptodome==3.14.1
+cryptography==36.0.1
+pyjwt==2.3.0
+
+# Browser automation
+selenium==4.1.0
+webdriver-manager==3.5.3
+
+# Testing
+pytest==7.0.0
+pytest-flask==1.2.0
+
+# Frontend components (used by Flask templates)
+flask-wtf==1.0.0
+wtforms==3.0.1
