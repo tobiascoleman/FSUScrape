@@ -283,17 +283,20 @@ def perform_login(username, password, headless=True): # Set Headless to False fo
             logger.info(f"Waiting for Duo authentication to complete (timeout: 240s)")
             
             # Define a custom expected condition
-            def duo_authentication_complete(driver):
-                return "Secured by Duo" not in driver.page_source.strip()
+            def duo_page_loaded(driver):
+                return "Secured by Duo" in driver.page_source.strip()
             # First wait until it is on the page
             WebDriverWait(driver, 20, poll_frequency=1).until(
-                duo_authentication_complete,
+                duo_page_loaded,
                 message="Duo authentication timeout - page not found"
             )
             logger.info("Duo authentication page found, waiting for user to approve")
             # Now wait until user approves it
+            # First, check if "Secured by Duo" exists on the page
+            def duo_auth_complete(driver):
+                return "Secured by Duo" not in driver.page_source.strip()
             WebDriverWait(driver, 240, poll_frequency=2).until(
-                not duo_authentication_complete,
+                duo_auth_complete,
                 message="Duo authentication timeout - user did not complete 2FA"
             )
             
