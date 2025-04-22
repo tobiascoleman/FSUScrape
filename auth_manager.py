@@ -23,7 +23,7 @@ REFRESH_IN_PROGRESS = {}
 REFRESH_LOCKS = {}
 
 # Cookie expiration time
-COOKIE_EXPIRY = timedelta(minutes=30)
+COOKIE_EXPIRY = timedelta(minutes=120)
 
 # Global login lock to ensure only one chromedriver at a time
 GLOBAL_LOGIN_LOCK = threading.Lock()
