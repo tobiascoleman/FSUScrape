@@ -85,83 +85,17 @@
 </div>
 
 <script>
-// Time conversion function for 24-hour to 12-hour format
-function convertTo12HourFormat(time24) {
-    if (!time24 || typeof time24 !== 'string') return 'N/A';
-    
-    // Extract hours and minutes
-    const hours = parseInt(time24.substring(0, 2));
-    const minutes = time24.substring(2);
-    
-    // Convert hours to 12-hour format
-    let hours12 = hours % 12;
-    if (hours12 === 0) hours12 = 12; // Handle midnight/noon
-    
-    // Determine AM/PM
-    const period = hours >= 12 ? 'PM' : 'AM';
-    
-    // Return formatted time
-    return `${hours12}:${minutes} ${period}`;
-}
-
-// Initialize notification permission
-let notificationPermission = false;
-
-// Listen for notifications
-socket.on('notification', function(data) {
-    if (data.message && data.message.includes('2FA authentication required')) {
-        // Show 2FA alert with custom styling
-        const alertDiv = document.createElement('div');
-        alertDiv.className = 'alert alert-warning alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3';
-        alertDiv.setAttribute('role', 'alert');
-        alertDiv.innerHTML = `
-            <strong>2FA Required!</strong> ${data.message}
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-        `;
-        document.body.appendChild(alertDiv);
-        
-        // Remove alert after 30 seconds
-        setTimeout(() => {
-            alertDiv.remove();
-        }, 30000);
-    } else if (notificationPermission) {
-        // Regular course availability notification
-        new Notification("Course Update", {
-            body: data.message,
-            icon: "/static/favicon.ico"
-        });
-    }
-});
-
-// Request notification permission
-async function requestNotificationPermission() {
-    if (!("Notification" in window)) {
-        alert("This browser does not support notifications");
-        return false;
-    }
-
-    let permission = await Notification.requestPermission();
-    notificationPermission = permission === "granted";
-    return notificationPermission;
-}
 
 // Convert times and setup monitoring when DOM is loaded
 document.addEventListener('DOMContentLoaded', function() {
-    // Check notification permission
-    if (Notification.permission === 'granted') {
-        notificationPermission = true;
-    }
-    
-    // Convert all times in the table
+    // Convert all times in the table using the shared TimeUtils library
     const timeSpans = document.querySelectorAll('.formatted-time');
     timeSpans.forEach(span => {
         const startTime = span.dataset.startTime;
         const endTime = span.dataset.endTime;
         
         if (startTime && endTime) {
-            const formattedStart = convertTo12HourFormat(startTime);
-            const formattedEnd = convertTo12HourFormat(endTime);
-            span.textContent = `${formattedStart} - ${formattedEnd}`;
+            span.textContent = TimeUtils.formatTimeRange(startTime, endTime);
         }
     });
 });

@@ -125,12 +125,6 @@ def insert_course(course_code, section, seats_capacity, seats_available, instruc
         True if successful, False otherwise
     """
     try:
-        # Validate seat capacity
-        seats_capacity = int(seats_capacity)
-        if seats_capacity <= 0:
-            logger.info(f"Skipped {course_code}-{section} (No available seats)")
-            return False
-
         conn = get_db_connection()
         cursor = conn.cursor()
 
@@ -253,15 +247,6 @@ def process_courses(data, year, term):
                 start_time = meeting.get("startTime")
                 end_time = meeting.get("endTime")
                 location = meeting.get("location")
-            
-            # Ensure capacity is an integer and >0
-            try:
-                seats_capacity = int(seats_capacity)
-                if seats_capacity <= 0:
-                    continue
-            except (ValueError, TypeError):
-                logger.warning(f"Invalid seats capacity for {subject_id}{course_code}-{section_code}: {seats_capacity}")
-                continue
                 
             # Form the complete course code
             complete_course_code = f"{subject_id}{course_code}"
