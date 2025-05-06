@@ -18,13 +18,5 @@ When this gets installed you may run into security issues with mac, to bypass:
 
 3. in a .venv, install remaining dependencies
 ```shell
-pip install pycryptodome
-pip install flask
-pip install werkzeug
-
-also? (toby check this -conner):
-pip install requests
-pip install selenium
+pip install -r requirements.txt
 ```
-
-Should run but lmk if it doesn't
